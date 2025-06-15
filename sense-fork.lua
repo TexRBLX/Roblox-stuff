@@ -524,16 +524,48 @@ function InstanceObject:Destruct()
     end
 end
 
+-- In your forked library source, replace the ENTIRE Render function with this one.
 function InstanceObject:Render()
 	local instance = self.instance;
-	if not instance or not instance.Parent or not instance:IsA("BasePart") then
+	if not instance or not instance.Parent then
 		return self:Destruct();
 	end
 
 	local drawings = self.drawings;
 	local options = self.options;
     
-    local worldPosition = instance.CFrame.Position;
+    -- ADDED: Logic to handle both Models and Parts
+    local cframe, size, worldPosition
+    
+    if instance:IsA("Model") then
+        local parts = {}
+        local descendants = instance:GetDescendants()
+        for i = 1, #descendants do
+            local part = descendants[i]
+            if part:IsA("BasePart") or part:IsA("UnionOperation") then
+                parts[#parts + 1] = part
+            end
+        end
+
+        if #parts == 0 then
+            -- If the model has no parts, we can't draw it.
+            return self:Destruct()
+        end
+        
+        cframe, size = getBoundingBox(parts)
+        worldPosition = instance:GetPivot().Position -- Use the model's pivot for the text label
+
+    elseif instance:IsA("BasePart") then
+        -- This is the original logic for single parts
+        cframe = instance.CFrame
+        size = instance.Size
+        worldPosition = cframe.Position
+    else
+        -- If it's not a Model or a BasePart, we can't handle it.
+        return self:Destruct()
+    end
+    
+    -- The rest of the rendering logic is now generic
 	local screenPosition, onScreen, depth = worldToScreen(worldPosition);
 
 	if not options.enabled then
@@ -545,8 +577,7 @@ function InstanceObject:Render()
 		onScreen = false;
 	end
 
-    -- Box Rendering Logic (ADDED)
-    local corners = calculateCorners(instance.CFrame, instance.Size);
+    local corners = calculateCorners(cframe, size);
     
     drawings.box.Visible = onScreen and options.box;
     drawings.boxOutline.Visible = drawings.box.Visible and options.boxOutline;
@@ -573,7 +604,6 @@ function InstanceObject:Render()
 		boxFill.Transparency = options.boxFillColor[2];
 	end
 
-	-- Text Rendering Logic (Original, slightly modified for visibility)
     local text = drawings.text;
 	text.Visible = onScreen;
 	if text.Visible then
@@ -590,6 +620,7 @@ function InstanceObject:Render()
 			:gsub("{position}", tostring(worldPosition));
 	end
 end
+
 
 
 -- interface
