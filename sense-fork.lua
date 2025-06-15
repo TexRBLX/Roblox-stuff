@@ -578,13 +578,12 @@ function InstanceObject:Render()
         if #parts == 0 then return self:Destruct() end
         cframe, size = getBoundingBox(parts)
         worldPosition = instance:GetPivot().Position
-        humanoid = instance:FindFirstChildOfClass("Humanoid") -- Find humanoid in model
+        humanoid = instance:FindFirstChildOfClass("Humanoid")
 
     elseif instance:IsA("BasePart") then
         cframe = instance.CFrame
         size = instance.Size
         worldPosition = cframe.Position
-        -- Find humanoid in part's parent (for character parts)
         humanoid = instance.Parent and instance.Parent:FindFirstChildOfClass("Humanoid")
     else
         return self:Destruct()
@@ -631,13 +630,14 @@ function InstanceObject:Render()
 		boxFill.Transparency = options.boxFillColor[2];
 	end
 
-    -- HealthBar Rendering (ADDED)
+    -- HealthBar Rendering
     local health, maxHealth = 100, 100
     if humanoid then
         health, maxHealth = humanoid.Health, humanoid.MaxHealth
     end
-
-    local showHealthBar = onScreen and options.healthBar and humanoid
+    
+    -- FIXED: Ensure the result is always a boolean
+    local showHealthBar = onScreen and options.healthBar and (humanoid ~= nil)
     drawings.healthBar.Visible = showHealthBar
     drawings.healthBarOutline.Visible = showHealthBar and options.healthBarOutline
     if showHealthBar then
@@ -656,8 +656,9 @@ function InstanceObject:Render()
 		healthBarOutline.Transparency = options.healthBarOutlineColor[2];
     end
 
-    -- HealthText Rendering (ADDED)
-    local showHealthText = onScreen and options.healthText and humanoid
+    -- HealthText Rendering
+    -- FIXED: Ensure the result is always a boolean
+    local showHealthText = onScreen and options.healthText and (humanoid ~= nil)
     drawings.healthText.Visible = showHealthText
     if showHealthText then
         local barFrom = corners.topLeft - HEALTH_BAR_OFFSET;
