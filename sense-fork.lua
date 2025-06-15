@@ -460,7 +460,9 @@ function ChamObject:Update()
 	end
 end
 
--- instance class (MODIFIED TO SUPPORT BOXES)
+-- =================================================================
+-- FINAL InstanceObject Class (with Model, Box, and Split Text Support)
+-- =================================================================
 local InstanceObject = {};
 InstanceObject.__index = InstanceObject;
 
@@ -475,38 +477,46 @@ end
 function InstanceObject:Construct()
 	local options = self.options;
     
-    -- Text Options (Original)
+    -- General Options
 	options.enabled = options.enabled == nil and true or options.enabled;
+	options.limitDistance = options.limitDistance or false;
+	options.maxDistance = options.maxDistance or 150;
+    
+    -- Main Text Options
 	options.text = options.text or "{name}";
 	options.textColor = options.textColor or { Color3.new(1,1,1), 1 };
 	options.textOutline = options.textOutline == nil and true or options.textOutline;
 	options.textOutlineColor = options.textOutlineColor or Color3.new();
 	options.textSize = options.textSize or 13;
 	options.textFont = options.textFont or 2;
-	options.limitDistance = options.limitDistance or false;
-	options.maxDistance = options.maxDistance or 150;
     
-    -- Box Options (ADDED)
+    -- ADDED: Distance Text Options
+    options.distance = options.distance or false;
+    options.distanceColor = options.distanceColor or { Color3.new(1,1,1), 1 };
+    options.distanceOutline = options.distanceOutline or true;
+    options.distanceOutlineColor = options.distanceOutlineColor or Color3.new();
+    
+    -- Box Options
     options.box = options.box or false;
     options.boxColor = options.boxColor or { Color3.new(1,1,1), 1 };
     options.boxOutline = options.boxOutline or true;
-    options.boxOutlineColor = options.boxOutlineColor or { Color3.new(), 1 };
+    options.boxOutlineColor = { Color3.new(), 1 };
     options.boxFill = options.boxFill or false;
     options.boxFillColor = options.boxFillColor or { Color3.new(1,1,1), 0.5};
 
 	self.drawings = {
-        text = Drawing.new("Text"),
-        -- ADDED: Box Drawings
+        name = Drawing.new("Text"),
+        distance = Drawing.new("Text"), -- ADDED
         boxFill = Drawing.new("Square"),
         boxOutline = Drawing.new("Square"),
         box = Drawing.new("Square")
     }
-    self.drawings.text.Center = true;
+    self.drawings.name.Center = true;
+    self.drawings.distance.Center = true; -- ADDED
     self.drawings.box.Filled = false;
     self.drawings.boxOutline.Filled = false;
     self.drawings.boxFill.Filled = true;
     
-    -- Set thickness for outline
     self.drawings.box.Thickness = 1;
     self.drawings.boxOutline.Thickness = 3;
 
@@ -518,13 +528,11 @@ end
 
 function InstanceObject:Destruct()
 	self.renderConnection:Disconnect();
-	-- MODIFIED: Remove all drawings
     for _, drawing in pairs(self.drawings) do
         drawing:Remove();
     end
 end
 
--- In your forked library source, replace the ENTIRE Render function with this one.
 function InstanceObject:Render()
 	local instance = self.instance;
 	if not instance or not instance.Parent then
@@ -534,7 +542,6 @@ function InstanceObject:Render()
 	local drawings = self.drawings;
 	local options = self.options;
     
-    -- ADDED: Logic to handle both Models and Parts
     local cframe, size, worldPosition
     
     if instance:IsA("Model") then
@@ -542,30 +549,22 @@ function InstanceObject:Render()
         local descendants = instance:GetDescendants()
         for i = 1, #descendants do
             local part = descendants[i]
-            if part:IsA("BasePart") or part:IsA("UnionOperation") then
+            if part:IsA("BasePart") then
                 parts[#parts + 1] = part
             end
         end
-
-        if #parts == 0 then
-            -- If the model has no parts, we can't draw it.
-            return self:Destruct()
-        end
-        
+        if #parts == 0 then return self:Destruct() end
         cframe, size = getBoundingBox(parts)
-        worldPosition = instance:GetPivot().Position -- Use the model's pivot for the text label
+        worldPosition = instance:GetPivot().Position
 
     elseif instance:IsA("BasePart") then
-        -- This is the original logic for single parts
         cframe = instance.CFrame
         size = instance.Size
         worldPosition = cframe.Position
     else
-        -- If it's not a Model or a BasePart, we can't handle it.
         return self:Destruct()
     end
     
-    -- The rest of the rendering logic is now generic
 	local screenPosition, onScreen, depth = worldToScreen(worldPosition);
 
 	if not options.enabled then
@@ -579,6 +578,7 @@ function InstanceObject:Render()
 
     local corners = calculateCorners(cframe, size);
     
+    -- Box Rendering
     drawings.box.Visible = onScreen and options.box;
     drawings.boxOutline.Visible = drawings.box.Visible and options.boxOutline;
     if drawings.box.Visible then
@@ -604,23 +604,37 @@ function InstanceObject:Render()
 		boxFill.Transparency = options.boxFillColor[2];
 	end
 
-    local text = drawings.text;
-	text.Visible = onScreen;
-	if text.Visible then
-		text.Position = screenPosition;
-		text.Color = options.textColor[1];
-		text.Transparency = options.textColor[2];
-		text.Outline = options.textOutline;
-		text.OutlineColor = options.textOutlineColor;
-		text.Size = options.textSize;
-		text.Font = options.textFont;
-		text.Text = options.text
-			:gsub("{name}", instance.Name)
-			:gsub("{distance}", round(depth))
-			:gsub("{position}", tostring(worldPosition));
+    -- Name Text Rendering (MODIFIED)
+    local name = drawings.name;
+	name.Visible = onScreen;
+	if name.Visible then
+		name.Color = options.textColor[1];
+		name.Transparency = options.textColor[2];
+		name.Outline = options.textOutline;
+		name.OutlineColor = options.textOutlineColor;
+		name.Size = options.textSize;
+		name.Font = options.textFont;
+        -- The text option no longer needs to handle distance
+		name.Text = options.text:gsub("{name}", instance.Name) 
+        -- Position it above the box
+        name.Position = (corners.topLeft + corners.topRight)*0.5 - Vector2.yAxis*name.TextBounds.Y - NAME_OFFSET;
 	end
-end
 
+    -- Distance Text Rendering (ADDED)
+    local distance = drawings.distance;
+    distance.Visible = onScreen and options.distance;
+    if distance.Visible then
+        distance.Text = round(depth) .. " studs";
+        distance.Size = options.textSize;
+        distance.Font = options.textFont;
+        distance.Color = options.distanceColor[1];
+        distance.Transparency = options.distanceColor[2];
+        distance.Outline = options.distanceOutline;
+        distance.OutlineColor = options.distanceOutlineColor;
+        -- Position it below the box
+        distance.Position = (corners.bottomLeft + corners.bottomRight)*0.5 + DISTANCE_OFFSET;
+    end
+end
 
 
 -- interface
