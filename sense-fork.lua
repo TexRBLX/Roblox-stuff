@@ -468,7 +468,7 @@ function ChamObject:Update()
 end
 
 -- =================================================================
--- FINAL InstanceObject Class (with Model, Box, and Split Text Support)
+-- FINAL+ InstanceObject Class (with HealthBar, Model, Box, and Split Text Support)
 -- =================================================================
 local InstanceObject = {};
 InstanceObject.__index = InstanceObject;
@@ -497,7 +497,7 @@ function InstanceObject:Construct()
 	options.textSize = options.textSize or 13;
 	options.textFont = options.textFont or 2;
     
-    -- ADDED: Distance Text Options
+    -- Distance Text Options
     options.distance = options.distance or false;
     options.distanceColor = options.distanceColor or { Color3.new(1,1,1), 1 };
     options.distanceOutline = options.distanceOutline or true;
@@ -511,22 +511,39 @@ function InstanceObject:Construct()
     options.boxFill = options.boxFill or false;
     options.boxFillColor = options.boxFillColor or { Color3.new(1,1,1), 0.5};
 
+    -- ADDED: HealthBar Options
+    options.healthBar = options.healthBar or false;
+    options.healthyColor = options.healthyColor or Color3.new(0,1,0);
+    options.dyingColor = options.dyingColor or Color3.new(1,0,0);
+    options.healthBarOutline = options.healthBarOutline or true;
+    options.healthBarOutlineColor = { Color3.new(), 0.5 };
+    options.healthText = options.healthText or false;
+    options.healthTextColor = { Color3.new(1,1,1), 1 };
+    options.healthTextOutline = options.healthTextOutline or true;
+    options.healthTextOutlineColor = options.healthTextOutlineColor or Color3.new();
+
 	self.drawings = {
         name = Drawing.new("Text"),
-        distance = Drawing.new("Text"), -- ADDED
+        distance = Drawing.new("Text"),
         boxFill = Drawing.new("Square"),
         boxOutline = Drawing.new("Square"),
-        box = Drawing.new("Square")
+        box = Drawing.new("Square"),
+        -- ADDED: HealthBar Drawings
+        healthBar = Drawing.new("Line"),
+        healthBarOutline = Drawing.new("Line"),
+        healthText = Drawing.new("Text")
     }
     self.drawings.name.Center = true;
-    self.drawings.distance.Center = true; -- ADDED
+    self.drawings.distance.Center = true;
+    self.drawings.healthText.Center = true; -- ADDED
     self.drawings.box.Filled = false;
     self.drawings.boxOutline.Filled = false;
     self.drawings.boxFill.Filled = true;
     
     self.drawings.box.Thickness = 1;
     self.drawings.boxOutline.Thickness = 3;
-
+    self.drawings.healthBar.Thickness = 1; -- ADDED
+    self.drawings.healthBarOutline.Thickness = 3; -- ADDED
 
 	self.renderConnection = runService.Heartbeat:Connect(function(deltaTime)
 		self:Render(deltaTime);
@@ -549,25 +566,26 @@ function InstanceObject:Render()
 	local drawings = self.drawings;
 	local options = self.options;
     
-    local cframe, size, worldPosition
+    local cframe, size, worldPosition, humanoid
     
     if instance:IsA("Model") then
-        local parts = {}
-        local descendants = instance:GetDescendants()
-        for i = 1, #descendants do
-            local part = descendants[i]
+        local parts = {};
+        for _, part in ipairs(instance:GetDescendants()) do
             if part:IsA("BasePart") then
-                parts[#parts + 1] = part
+                table.insert(parts, part)
             end
         end
         if #parts == 0 then return self:Destruct() end
         cframe, size = getBoundingBox(parts)
         worldPosition = instance:GetPivot().Position
+        humanoid = instance:FindFirstChildOfClass("Humanoid") -- Find humanoid in model
 
     elseif instance:IsA("BasePart") then
         cframe = instance.CFrame
         size = instance.Size
         worldPosition = cframe.Position
+        -- Find humanoid in part's parent (for character parts)
+        humanoid = instance.Parent and instance.Parent:FindFirstChildOfClass("Humanoid")
     else
         return self:Destruct()
     end
@@ -613,6 +631,49 @@ function InstanceObject:Render()
 		boxFill.Transparency = options.boxFillColor[2];
 	end
 
+    -- HealthBar Rendering (ADDED)
+    local health, maxHealth = 100, 100
+    if humanoid then
+        health, maxHealth = humanoid.Health, humanoid.MaxHealth
+    end
+
+    local showHealthBar = onScreen and options.healthBar and humanoid
+    drawings.healthBar.Visible = showHealthBar
+    drawings.healthBarOutline.Visible = showHealthBar and options.healthBarOutline
+    if showHealthBar then
+        local barFrom = corners.topLeft - HEALTH_BAR_OFFSET;
+		local barTo = corners.bottomLeft - HEALTH_BAR_OFFSET;
+        
+        local healthBar = drawings.healthBar;
+        healthBar.To = barTo;
+        healthBar.From = lerp2(barTo, barFrom, health/maxHealth);
+        healthBar.Color = lerpColor(options.dyingColor, options.healthyColor, health/maxHealth);
+
+        local healthBarOutline = drawings.healthBarOutline;
+		healthBarOutline.To = barTo + HEALTH_BAR_OUTLINE_OFFSET;
+		healthBarOutline.From = barFrom - HEALTH_BAR_OUTLINE_OFFSET;
+		healthBarOutline.Color = options.healthBarOutlineColor[1];
+		healthBarOutline.Transparency = options.healthBarOutlineColor[2];
+    end
+
+    -- HealthText Rendering (ADDED)
+    local showHealthText = onScreen and options.healthText and humanoid
+    drawings.healthText.Visible = showHealthText
+    if showHealthText then
+        local barFrom = corners.topLeft - HEALTH_BAR_OFFSET;
+		local barTo = corners.bottomLeft - HEALTH_BAR_OFFSET;
+        
+        local healthText = drawings.healthText;
+        healthText.Text = round(health) .. "hp";
+        healthText.Size = options.textSize;
+        healthText.Font = options.textFont;
+        healthText.Color = options.healthTextColor[1];
+        healthText.Transparency = options.healthTextColor[2];
+        healthText.Outline = options.healthTextOutline;
+        healthText.OutlineColor = options.healthTextOutlineColor;
+        healthText.Position = lerp2(barTo, barFrom, health/maxHealth) - healthText.TextBounds*0.5 - HEALTH_TEXT_OFFSET;
+    end
+
     -- Name Text Rendering
     local name = drawings.name;
 	name.Visible = onScreen;
@@ -623,9 +684,7 @@ function InstanceObject:Render()
 		name.OutlineColor = options.textOutlineColor;
 		name.Size = options.textSize;
 		name.Font = options.textFont;
-        -- The text option no longer needs to handle distance
 		name.Text = options.text:gsub("{name}", instance.Name) 
-        -- Position it above the box
         name.Position = (corners.topLeft + corners.topRight)*0.5 - Vector2.yAxis*name.TextBounds.Y - NAME_OFFSET;
 	end
 
@@ -640,10 +699,10 @@ function InstanceObject:Render()
         distance.Transparency = options.distanceColor[2];
         distance.Outline = options.distanceOutline;
         distance.OutlineColor = options.distanceOutlineColor;
-        -- Position it below the box
         distance.Position = (corners.bottomLeft + corners.bottomRight)*0.5 + DISTANCE_OFFSET;
     end
 end
+
 
 
 -- interface
