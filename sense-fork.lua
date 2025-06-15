@@ -550,6 +550,7 @@ function InstanceObject:Destruct()
     for _, drawing in pairs(self.drawings) do
         drawing:Remove();
     end
+    self.isDestroyed = true
 end
 
 function InstanceObject:Render()
@@ -566,7 +567,7 @@ function InstanceObject:Render()
     if instance:IsA("Model") then
         local parts = {};
         for _, part in ipairs(instance:GetDescendants()) do
-            if part:IsA("BasePart") or part:IsA("UnionOperation") or part:IsA("MeshPart") then
+            if part:IsA("BasePart") or part:IsA("UnionOperation") then
                 table.insert(parts, part)
             end
         end
