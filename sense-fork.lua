@@ -566,7 +566,7 @@ function InstanceObject:Render()
     if instance:IsA("Model") then
         local parts = {};
         for _, part in ipairs(instance:GetDescendants()) do
-            if part:IsA("BasePart") then
+            if part:IsA("BasePart") or part:IsA("UnionOperation") or part:IsA("MeshPart") then
                 table.insert(parts, part)
             end
         end
