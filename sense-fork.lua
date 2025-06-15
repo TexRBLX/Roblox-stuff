@@ -83,8 +83,8 @@ local function calculateCorners(cframe, size)
     if not cframe or not size then return nil end
 	local cornersT = create(#VERTICES);
     for i = 1, #VERTICES do
-        local p, v = worldToScreen((cframe + size*0.5*VERTICES[i]).Position)
-        if not v then return nil end -- If any corner is off-screen in a weird way, abort.
+        local p, v, z = worldToScreen((cframe + size*0.5*VERTICES[i]).Position)
+        if z < 0 then return nil end -- If any corner is behind the camera, abort.
 		cornersT[i] = p
 	end
     
@@ -215,6 +215,12 @@ function EspObject:Update()
 	end
 
 	local _, onScreen, depth = worldToScreen(head.Position);
+    
+    -- FIXED (BUG #2): Prevent drawing when object is behind the camera
+    if depth < 0 then
+        onScreen = false
+    end
+
 	self.onScreen = onScreen;
 	self.distance = depth;
 
@@ -257,7 +263,6 @@ function EspObject:Render()
 	local options = self.options;
 	local corners = self.corners;
 
-    -- ADDED Protection against nil corners
     if onScreen and not corners then return end
 
 	visible.box.Visible = enabled and onScreen and options.box;
@@ -468,7 +473,7 @@ function ChamObject:Update()
 end
 
 -- =================================================================
--- FINAL+ InstanceObject Class (with HealthBar, Model, Box, and Split Text Support)
+-- FINAL InstanceObject Class
 -- =================================================================
 local InstanceObject = {};
 InstanceObject.__index = InstanceObject;
@@ -484,41 +489,32 @@ end
 function InstanceObject:Construct()
 	local options = self.options;
     
-    -- General Options
 	options.enabled = options.enabled == nil and true or options.enabled;
 	options.limitDistance = options.limitDistance or false;
 	options.maxDistance = options.maxDistance or 150;
-    
-    -- Main Text Options
 	options.text = options.text or "{name}";
 	options.textColor = options.textColor or { Color3.new(1,1,1), 1 };
 	options.textOutline = options.textOutline == nil and true or options.textOutline;
 	options.textOutlineColor = options.textOutlineColor or Color3.new();
 	options.textSize = options.textSize or 13;
 	options.textFont = options.textFont or 2;
-    
-    -- Distance Text Options
     options.distance = options.distance or false;
     options.distanceColor = options.distanceColor or { Color3.new(1,1,1), 1 };
     options.distanceOutline = options.distanceOutline or true;
     options.distanceOutlineColor = options.distanceOutlineColor or Color3.new();
-    
-    -- Box Options
     options.box = options.box or false;
     options.boxColor = options.boxColor or { Color3.new(1,1,1), 1 };
     options.boxOutline = options.boxOutline or true;
     options.boxOutlineColor = { Color3.new(), 1 };
     options.boxFill = options.boxFill or false;
     options.boxFillColor = options.boxFillColor or { Color3.new(1,1,1), 0.5};
-
-    -- ADDED: HealthBar Options
     options.healthBar = options.healthBar or false;
     options.healthyColor = options.healthyColor or Color3.new(0,1,0);
     options.dyingColor = options.dyingColor or Color3.new(1,0,0);
     options.healthBarOutline = options.healthBarOutline or true;
     options.healthBarOutlineColor = { Color3.new(), 0.5 };
     options.healthText = options.healthText or false;
-    options.healthTextColor = { Color3.new(1,1,1), 1 };
+    options.healthTextColor = options.healthTextColor or { Color3.new(1,1,1), 1 };
     options.healthTextOutline = options.healthTextOutline or true;
     options.healthTextOutlineColor = options.healthTextOutlineColor or Color3.new();
 
@@ -528,22 +524,21 @@ function InstanceObject:Construct()
         boxFill = Drawing.new("Square"),
         boxOutline = Drawing.new("Square"),
         box = Drawing.new("Square"),
-        -- ADDED: HealthBar Drawings
         healthBar = Drawing.new("Line"),
         healthBarOutline = Drawing.new("Line"),
         healthText = Drawing.new("Text")
     }
     self.drawings.name.Center = true;
     self.drawings.distance.Center = true;
-    self.drawings.healthText.Center = true; -- ADDED
+    self.drawings.healthText.Center = true;
     self.drawings.box.Filled = false;
     self.drawings.boxOutline.Filled = false;
     self.drawings.boxFill.Filled = true;
     
     self.drawings.box.Thickness = 1;
     self.drawings.boxOutline.Thickness = 3;
-    self.drawings.healthBar.Thickness = 1; -- ADDED
-    self.drawings.healthBarOutline.Thickness = 3; -- ADDED
+    self.drawings.healthBar.Thickness = 1;
+    self.drawings.healthBarOutline.Thickness = 3;
 
 	self.renderConnection = runService.Heartbeat:Connect(function(deltaTime)
 		self:Render(deltaTime);
@@ -591,6 +586,11 @@ function InstanceObject:Render()
     
 	local screenPosition, onScreen, depth = worldToScreen(worldPosition);
 
+    -- FIXED (BUG #2): Prevent drawing when object is behind the camera
+    if depth < 0 then
+        onScreen = false
+    end
+
 	if not options.enabled then
         for _, d in pairs(drawings) do d.Visible = false end;
 		return;
@@ -636,7 +636,6 @@ function InstanceObject:Render()
         health, maxHealth = humanoid.Health, humanoid.MaxHealth
     end
     
-    -- FIXED: Ensure the result is always a boolean
     local showHealthBar = onScreen and options.healthBar and (humanoid ~= nil)
     drawings.healthBar.Visible = showHealthBar
     drawings.healthBarOutline.Visible = showHealthBar and options.healthBarOutline
@@ -657,7 +656,6 @@ function InstanceObject:Render()
     end
 
     -- HealthText Rendering
-    -- FIXED: Ensure the result is always a boolean
     local showHealthText = onScreen and options.healthText and (humanoid ~= nil)
     drawings.healthText.Visible = showHealthText
     if showHealthText then
@@ -668,6 +666,7 @@ function InstanceObject:Render()
         healthText.Text = round(health) .. "hp";
         healthText.Size = options.textSize;
         healthText.Font = options.textFont;
+        -- FIXED (BUG #1): Correctly assign the health text color
         healthText.Color = options.healthTextColor[1];
         healthText.Transparency = options.healthTextColor[2];
         healthText.Outline = options.healthTextOutline;
@@ -853,7 +852,7 @@ function EspInterface.Load()
         end
 	end
 
-	EspInterface.playerAdded:Connect(function(player)
+	EspInterface.playerAdded = players.PlayerAdded:Connect(function(player)
         if player ~= localPlayer then
             createObject(player)
         end
