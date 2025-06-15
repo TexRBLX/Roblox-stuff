@@ -68,7 +68,7 @@ local function getBoundingBox(parts)
 		min = min3(min or cframe.Position, (cframe - size*0.5).Position);
 		max = max3(max or cframe.Position, (cframe + size*0.5).Position);
 	end
-
+    if not min or not max then return CFrame.new(), Vector3.new() end
 	local center = (min + max)*0.5;
 	local front = Vector3.new(center.X, center.Y, max.Z);
 	return CFrame.new(center, front), max - min;
@@ -80,15 +80,20 @@ local function worldToScreen(world)
 end
 
 local function calculateCorners(cframe, size)
-	local corners = create(#VERTICES);
-	for i = 1, #VERTICES do
-		corners[i] = worldToScreen((cframe + size*0.5*VERTICES[i]).Position);
+    if not cframe or not size then return nil end
+	local cornersT = create(#VERTICES);
+    for i = 1, #VERTICES do
+        local p, v = worldToScreen((cframe + size*0.5*VERTICES[i]).Position)
+        if not v then return nil end -- If any corner is off-screen in a weird way, abort.
+		cornersT[i] = p
 	end
+    
+    if #cornersT < 8 then return nil end
 
-	local min = min2(viewportSize, unpack(corners));
-	local max = max2(Vector2.zero, unpack(corners));
+	local min = min2(viewportSize, unpack(cornersT));
+	local max = max2(Vector2.zero, unpack(cornersT));
 	return {
-		corners = corners,
+		corners = cornersT,
 		topLeft = Vector2.new(floor(min.X), floor(min.Y)),
 		topRight = Vector2.new(floor(max.X), floor(min.Y)),
 		bottomLeft = Vector2.new(floor(min.X), floor(max.Y)),
@@ -97,7 +102,6 @@ local function calculateCorners(cframe, size)
 end
 
 local function rotateVector(vector, radians)
-	-- https://stackoverflow.com/questions/28112315/how-do-i-rotate-a-vector
 	local x, y = vector.X, vector.Y;
 	local c, s = cos(radians), sin(radians);
 	return Vector2.new(x*c - y*s, x*s + y*c);
@@ -252,6 +256,9 @@ function EspObject:Render()
 	local interface = self.interface;
 	local options = self.options;
 	local corners = self.corners;
+
+    -- ADDED Protection against nil corners
+    if onScreen and not corners then return end
 
 	visible.box.Visible = enabled and onScreen and options.box;
 	visible.boxOutline.Visible = visible.box.Visible and options.boxOutline;
@@ -578,6 +585,8 @@ function InstanceObject:Render()
 
     local corners = calculateCorners(cframe, size);
     
+    if onScreen and not corners then return end
+
     -- Box Rendering
     drawings.box.Visible = onScreen and options.box;
     drawings.boxOutline.Visible = drawings.box.Visible and options.boxOutline;
@@ -604,7 +613,7 @@ function InstanceObject:Render()
 		boxFill.Transparency = options.boxFillColor[2];
 	end
 
-    -- Name Text Rendering (MODIFIED)
+    -- Name Text Rendering
     local name = drawings.name;
 	name.Visible = onScreen;
 	if name.Visible then
@@ -620,7 +629,7 @@ function InstanceObject:Render()
         name.Position = (corners.topLeft + corners.topRight)*0.5 - Vector2.yAxis*name.TextBounds.Y - NAME_OFFSET;
 	end
 
-    -- Distance Text Rendering (ADDED)
+    -- Distance Text Rendering
     local distance = drawings.distance;
     distance.Visible = onScreen and options.distance;
     if distance.Visible then
@@ -778,12 +787,18 @@ function EspInterface.Load()
 	end
 
 	local plrs = players:GetPlayers();
-	for i = 2, #plrs do
-		createObject(plrs[i]);
+	for i = 1, #plrs do
+        if plrs[i] ~= localPlayer then
+		    createObject(plrs[i]);
+        end
 	end
 
-	EspInterface.playerAdded = players.PlayerAdded:Connect(createObject);
-	EspInterface.playerRemoving = players.PlayerRemoving:Connect(removeObject);
+	EspInterface.playerAdded:Connect(function(player)
+        if player ~= localPlayer then
+            createObject(player)
+        end
+    end);
+	EspInterface.playerRemoving:Connect(removeObject);
 	EspInterface._hasLoaded = true;
 end
 
