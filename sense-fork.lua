@@ -826,6 +826,18 @@ function EspInterface.AddInstance(instance, options)
 	return cache[instance][1];
 end
 
+--vvvv ADD THIS NEW FUNCTION vvvv--
+function EspInterface.RemoveInstance(instance)
+	local cache = EspInterface._objectCache;
+	if instance and cache[instance] then
+		-- The main script calls Destruct() separately.
+		-- We just need to clear the object from the cache.
+		cache[instance] = nil;
+	end
+end
+--^^^^ ADD THIS NEW FUNCTION ^^^^--
+
+
 function EspInterface.Load()
 	assert(not EspInterface._hasLoaded, "Esp has already been loaded.");
 
