@@ -816,26 +816,33 @@ local EspInterface = {
 	}
 };
 
+-- vvvv NEW, SMARTER FUNCTION vvvv
 function EspInterface.AddInstance(instance, options)
 	local cache = EspInterface._objectCache;
-	if cache[instance] then
-		warn("Instance handler already exists.");
+	
+	-- Check if a handler exists AND if it hasn't been destroyed
+	if cache[instance] and cache[instance][1] and not cache[instance][1].isDestroyed then
+		-- A valid handler already exists. Let's re-use it.
+		local existingObject = cache[instance][1];
+		
+		-- Update its options with the new ones, in case they changed
+		for key, value in pairs(options) do
+			existingObject.options[key] = value;
+		end
+		
+		-- Ensure it's enabled and visible
+		existingObject.options.enabled = true;
+		
+		-- Return the existing handler instead of creating a new one
+		return existingObject;
 	else
-		cache[instance] = { InstanceObject.new(instance, options) };
-	end
-	return cache[instance][1];
-end
-
---vvvv ADD THIS NEW FUNCTION vvvv--
-function EspInterface.RemoveInstance(instance)
-	local cache = EspInterface._objectCache;
-	if instance and cache[instance] then
-		-- The main script calls Destruct() separately.
-		-- We just need to clear the object from the cache.
-		cache[instance] = nil;
+		-- The handler doesn't exist, or the old one was destroyed.
+		-- We'll create a new one, overwriting any old/destroyed entry.
+		local newObject = InstanceObject.new(instance, options);
+		cache[instance] = { newObject };
+		return newObject;
 	end
 end
---^^^^ ADD THIS NEW FUNCTION ^^^^--
 
 
 function EspInterface.Load()
