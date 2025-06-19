@@ -75,7 +75,7 @@ function EspController:Disable(moduleName: string)
     module.activeObjects = {}
 end
 
-function ESPController:Toggle(moduleName)
+function EspController:Toggle(moduleName)
     local module = self.modules[moduleName]
     if not module then return end
     
