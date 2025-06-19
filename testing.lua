@@ -1,4 +1,3 @@
-
 local RunService = game:GetService("RunService")
 local EspController = {}
 EspController.modules = {}
@@ -31,11 +30,10 @@ function EspController:Enable(moduleName)
     local module = self.modules[moduleName]
     if not module or module.isEnabled then return end
     
-    print(`Enabling '{moduleName}' module (Type: {module.handlerType})`)
+    print(string.format("Enabling '%s' module (Type: %s)", moduleName, module.handlerType))
     module.isEnabled = true
 
     if module.handlerType == "event" then
-
         local function onChildAdded(child)
             local success, espObject = pcall(module.createFunction, child)
             if success and espObject then
@@ -67,7 +65,7 @@ function EspController:Disable(moduleName)
     local module = self.modules[moduleName]
     if not module or not module.isEnabled then return end
 
-    print(`Disabling '{moduleName}' module`)
+    print(string.format("Disabling '%s' module", moduleName))
     module.isEnabled = false
 
     for _, connection in pairs(module.connections) do
