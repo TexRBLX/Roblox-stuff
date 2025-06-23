@@ -495,6 +495,8 @@ function InstanceObject:Construct()
 	options.text = options.text or "{name}";
 	options.textColor = options.textColor or { Color3.new(1,1,1), 1 };
 	options.textOutline = options.textOutline == nil and true or options.textOutline;
+        options.nameTextSize = options.nameTextSize or 13; -- ADD THIS
+        options.healthTextSize = options.healthTextSize or 13; -- ADD THIS
 	options.textOutlineColor = options.textOutlineColor or Color3.new();
 	options.textSize = options.textSize or 13;
 	options.textFont = options.textFont or 2;
@@ -665,7 +667,7 @@ function InstanceObject:Render()
         
         local healthText = drawings.healthText;
         healthText.Text = round(health) .. "hp";
-        healthText.Size = options.textSize;
+        healthText.Size = options.healthTextSize;
         healthText.Font = options.textFont;
         -- FIXED (BUG #1): Correctly assign the health text color
         healthText.Color = options.healthTextColor[1];
@@ -683,7 +685,7 @@ function InstanceObject:Render()
 		name.Transparency = options.textColor[2];
 		name.Outline = options.textOutline;
 		name.OutlineColor = options.textOutlineColor;
-		name.Size = options.textSize;
+		name.Size = options.nameTextSize;
 		name.Font = options.textFont;
 		name.Text = options.text:gsub("{name}", instance.Name) 
         name.Position = (corners.topLeft + corners.topRight)*0.5 - Vector2.yAxis*name.TextBounds.Y - NAME_OFFSET;
