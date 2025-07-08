@@ -1,3 +1,4 @@
+print("loaded sense fork")
 -- services
 local runService = game:GetService("RunService");
 local players = game:GetService("Players");
