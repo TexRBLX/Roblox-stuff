@@ -84,7 +84,7 @@ local function calculateCorners(cframe, size)
 	local cornersT = create(#VERTICES);
     for i = 1, #VERTICES do
         local p, v, z = worldToScreen((cframe + size*0.5*VERTICES[i]).Position)
-        if z < 0 then return nil end -- If any corner is behind the camera, abort.
+        if z < 0 then return nil end
 		cornersT[i] = p
 	end
     
@@ -107,7 +107,6 @@ local function rotateVector(vector, radians)
 	return Vector2.new(x*c - y*s, x*s + y*c);
 end
 
--- NEW HELPER FUNCTION: Merges custom team settings with a base to prevent errors.
 local function getMergedOptions(interface, teamName)
 	local teamOptions = interface.teamSettings[teamName]
 
@@ -232,7 +231,6 @@ end
 function EspObject:Update()
 	local interface = self.interface;
 
-	-- FIXED: Use the merging function to get a complete options table.
 	local teamName = interface.getCustomTeam(self.player)
 	self.options = getMergedOptions(interface, teamName)
 
@@ -368,6 +366,7 @@ function EspObject:Render()
 	visible.name.Visible = enabled and onScreen and options.name;
 	if visible.name.Visible then
 		local name = visible.name;
+		name.Text = self.player.DisplayName
 		name.Size = interface.sharedSettings.textSize;
 		name.Font = interface.sharedSettings.textFont;
 		name.Color = parseColor(self, options.nameColor[1]);
@@ -501,7 +500,6 @@ function ChamObject:Update()
 	local interface = self.interface;
 	local character = interface.getCharacter(self.player);
 
-	-- FIXED: Use the merging function to get a complete options table.
 	local teamName = interface.getCustomTeam(self.player)
 	local options = getMergedOptions(interface, teamName)
 
@@ -520,7 +518,7 @@ function ChamObject:Update()
 end
 
 -- =================================================================
--- FINAL InstanceObject Class (UNCHANGED)
+-- FINAL InstanceObject Class (MODIFIED)
 -- =================================================================
 local InstanceObject = {};
 InstanceObject.__index = InstanceObject;
@@ -539,6 +537,7 @@ function InstanceObject:Construct()
 	options.enabled = options.enabled == nil and true or options.enabled;
 	options.limitDistance = options.limitDistance or false;
 	options.maxDistance = options.maxDistance or 150;
+	options.name = options.name or false;
 	options.text = options.text or "{name}";
 	options.textColor = options.textColor or { Color3.new(1,1,1), 1 };
 	options.textOutline = options.textOutline == nil and true or options.textOutline;
@@ -566,6 +565,10 @@ function InstanceObject:Construct()
     options.healthTextColor = options.healthTextColor or { Color3.new(1,1,1), 1 };
     options.healthTextOutline = options.healthTextOutline or true;
     options.healthTextOutlineColor = options.healthTextOutlineColor or Color3.new();
+	options.highlight = options.highlight or false;
+	options.highlightFillColor = options.highlightFillColor or { Color3.new(1, 0, 0), 0.5 };
+	options.highlightOutlineColor = options.highlightOutlineColor or { Color3.new(0, 0, 0), 0 };
+	options.highlightVisibleOnly = options.highlightVisibleOnly or false;
 
 	self.drawings = {
         name = Drawing.new("Text"),
@@ -589,6 +592,8 @@ function InstanceObject:Construct()
     self.drawings.healthBar.Thickness = 1;
     self.drawings.healthBarOutline.Thickness = 3;
 
+	self.highlight = Instance.new("Highlight", container)
+
 	self.renderConnection = runService.Heartbeat:Connect(function(deltaTime)
 		self:Render(deltaTime);
 	end);
@@ -599,6 +604,9 @@ function InstanceObject:Destruct()
     for _, drawing in pairs(self.drawings) do
         drawing:Remove();
     end
+	if self.highlight then
+		self.highlight:Destroy()
+	end
     self.isDestroyed = true
 end
 
@@ -611,9 +619,10 @@ function InstanceObject:Render()
 	local drawings = self.drawings;
 	local options = self.options;
     
-    local cframe, size, worldPosition, humanoid
+    local cframe, size, worldPosition, humanoid, adornee
     
     if instance:IsA("Model") then
+		adornee = instance
         local parts = {};
         for _, part in ipairs(instance:GetDescendants()) do
             if part:IsA("BasePart") or part:IsA("UnionOperation") then
@@ -626,6 +635,7 @@ function InstanceObject:Render()
         humanoid = instance:FindFirstChildOfClass("Humanoid")
 
     elseif instance:IsA("BasePart") then
+		adornee = instance.Parent:IsA("Model") and instance.Parent or instance
         cframe = instance.CFrame
         size = instance.Size
         worldPosition = cframe.Position
@@ -642,7 +652,22 @@ function InstanceObject:Render()
 
 	if not options.enabled then
         for _, d in pairs(drawings) do d.Visible = false end;
+		self.highlight.Enabled = false
 		return;
+	end
+
+	-- FIXED: Highlight logic updated to be independent of 2D on-screen checks
+	local highlight = self.highlight
+	highlight.Enabled = options.highlight
+	if options.highlight then
+		highlight.Adornee = adornee
+		highlight.FillColor = options.highlightFillColor[1]
+		highlight.FillTransparency = options.highlightFillColor[2]
+		highlight.OutlineColor = options.highlightOutlineColor[1]
+		highlight.OutlineTransparency = options.highlightOutlineColor[2]
+		highlight.DepthMode = options.highlightVisibleOnly and "Occluded" or "AlwaysOnTop"
+	else
+		highlight.Adornee = nil
 	end
 
 	if options.limitDistance and depth > options.maxDistance then
@@ -651,8 +676,12 @@ function InstanceObject:Render()
 
     local corners = calculateCorners(cframe, size);
     
-    if onScreen and not corners then return end
+    if onScreen and not corners then
+		for _, d in pairs(drawings) do d.Visible = false end;
+		return
+	end
 
+    -- Box Rendering
     drawings.box.Visible = onScreen and options.box;
     drawings.boxOutline.Visible = drawings.box.Visible and options.boxOutline;
     if drawings.box.Visible then
@@ -678,6 +707,7 @@ function InstanceObject:Render()
 		boxFill.Transparency = options.boxFillColor[2];
 	end
 
+    -- HealthBar Rendering
     local health, maxHealth = 100, 100
     if humanoid then
         health, maxHealth = humanoid.Health, humanoid.MaxHealth
@@ -702,6 +732,7 @@ function InstanceObject:Render()
 		healthBarOutline.Transparency = options.healthBarOutlineColor[2];
     end
 
+    -- HealthText Rendering
     local showHealthText = onScreen and options.healthText and (humanoid ~= nil)
     drawings.healthText.Visible = showHealthText
     if showHealthText then
@@ -719,8 +750,9 @@ function InstanceObject:Render()
         healthText.Position = lerp2(barTo, barFrom, health/maxHealth) - healthText.TextBounds*0.5 - HEALTH_TEXT_OFFSET;
     end
 
+    -- Name Text Rendering
     local name = drawings.name;
-	name.Visible = onScreen;
+	name.Visible = onScreen and options.name;
 	if name.Visible then
 		name.Color = options.textColor[1];
 		name.Transparency = options.textColor[2];
@@ -728,10 +760,11 @@ function InstanceObject:Render()
 		name.OutlineColor = options.textOutlineColor;
 		name.Size = options.nameTextSize;
 		name.Font = options.textFont;
-		name.Text = options.text:gsub("{name}", instance.Name) 
+		name.Text = options.text:gsub("{name}", adornee.Name) 
         name.Position = (corners.topLeft + corners.topRight)*0.5 - Vector2.yAxis*name.TextBounds.Y - NAME_OFFSET;
 	end
 
+    -- Distance Text Rendering
     local distance = drawings.distance;
     distance.Visible = onScreen and options.distance;
     if distance.Visible then
@@ -745,6 +778,7 @@ function InstanceObject:Render()
         distance.Position = (corners.bottomLeft + corners.bottomRight)*0.5 + DISTANCE_OFFSET;
     end
 end
+
 
 
 -- interface
