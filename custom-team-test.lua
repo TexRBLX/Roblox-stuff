@@ -232,6 +232,7 @@ end
 function EspObject:Update()
 	local interface = self.interface;
 
+	-- FIXED: Use the merging function to get a complete options table.
 	local teamName = interface.getCustomTeam(self.player)
 	self.options = getMergedOptions(interface, teamName)
 
@@ -367,7 +368,6 @@ function EspObject:Render()
 	visible.name.Visible = enabled and onScreen and options.name;
 	if visible.name.Visible then
 		local name = visible.name;
-		name.Text = self.player.DisplayName
 		name.Size = interface.sharedSettings.textSize;
 		name.Font = interface.sharedSettings.textFont;
 		name.Color = parseColor(self, options.nameColor[1]);
@@ -501,6 +501,7 @@ function ChamObject:Update()
 	local interface = self.interface;
 	local character = interface.getCharacter(self.player);
 
+	-- FIXED: Use the merging function to get a complete options table.
 	local teamName = interface.getCustomTeam(self.player)
 	local options = getMergedOptions(interface, teamName)
 
@@ -519,7 +520,7 @@ function ChamObject:Update()
 end
 
 -- =================================================================
--- FINAL InstanceObject Class
+-- FINAL InstanceObject Class (UNCHANGED)
 -- =================================================================
 local InstanceObject = {};
 InstanceObject.__index = InstanceObject;
@@ -652,7 +653,6 @@ function InstanceObject:Render()
     
     if onScreen and not corners then return end
 
-    -- Box Rendering
     drawings.box.Visible = onScreen and options.box;
     drawings.boxOutline.Visible = drawings.box.Visible and options.boxOutline;
     if drawings.box.Visible then
@@ -678,7 +678,6 @@ function InstanceObject:Render()
 		boxFill.Transparency = options.boxFillColor[2];
 	end
 
-    -- HealthBar Rendering
     local health, maxHealth = 100, 100
     if humanoid then
         health, maxHealth = humanoid.Health, humanoid.MaxHealth
@@ -703,7 +702,6 @@ function InstanceObject:Render()
 		healthBarOutline.Transparency = options.healthBarOutlineColor[2];
     end
 
-    -- HealthText Rendering
     local showHealthText = onScreen and options.healthText and (humanoid ~= nil)
     drawings.healthText.Visible = showHealthText
     if showHealthText then
@@ -721,9 +719,8 @@ function InstanceObject:Render()
         healthText.Position = lerp2(barTo, barFrom, health/maxHealth) - healthText.TextBounds*0.5 - HEALTH_TEXT_OFFSET;
     end
 
-    -- Name Text Rendering (FIXED)
     local name = drawings.name;
-	name.Visible = onScreen and options.name;
+	name.Visible = onScreen;
 	if name.Visible then
 		name.Color = options.textColor[1];
 		name.Transparency = options.textColor[2];
@@ -731,11 +728,10 @@ function InstanceObject:Render()
 		name.OutlineColor = options.textOutlineColor;
 		name.Size = options.nameTextSize;
 		name.Font = options.textFont;
-		name.Text = options.text;
+		name.Text = options.text:gsub("{name}", instance.Name) 
         name.Position = (corners.topLeft + corners.topRight)*0.5 - Vector2.yAxis*name.TextBounds.Y - NAME_OFFSET;
 	end
 
-    -- Distance Text Rendering
     local distance = drawings.distance;
     distance.Visible = onScreen and options.distance;
     if distance.Visible then
