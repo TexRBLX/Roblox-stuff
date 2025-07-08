@@ -16,7 +16,7 @@ local round = math.round;
 local sin = math.sin;
 local cos = math.cos;
 local clear = table.clear;
-local unpack = table.unpack or unpack;
+local unpack = table.unpack;
 local find = table.find;
 local create = table.create;
 local fromMatrix = CFrame.fromMatrix;
@@ -216,6 +216,7 @@ function EspObject:Update()
 
 	local _, onScreen, depth = worldToScreen(head.Position);
     
+    -- FIXED (BUG #2): Prevent drawing when object is behind the camera
     if depth < 0 then
         onScreen = false
     end
@@ -494,8 +495,8 @@ function InstanceObject:Construct()
 	options.text = options.text or "{name}";
 	options.textColor = options.textColor or { Color3.new(1,1,1), 1 };
 	options.textOutline = options.textOutline == nil and true or options.textOutline;
-    options.nameTextSize = options.nameTextSize or 13;
-    options.healthTextSize = options.healthTextSize or 13;
+        options.nameTextSize = options.nameTextSize or 13; -- ADD THIS
+        options.healthTextSize = options.healthTextSize or 13; -- ADD THIS
 	options.textOutlineColor = options.textOutlineColor or Color3.new();
 	options.textSize = options.textSize or 13;
 	options.textFont = options.textFont or 2;
@@ -588,6 +589,7 @@ function InstanceObject:Render()
     
 	local screenPosition, onScreen, depth = worldToScreen(worldPosition);
 
+    -- FIXED (BUG #2): Prevent drawing when object is behind the camera
     if depth < 0 then
         onScreen = false
     end
@@ -667,6 +669,7 @@ function InstanceObject:Render()
         healthText.Text = round(health) .. "hp";
         healthText.Size = options.healthTextSize;
         healthText.Font = options.textFont;
+        -- FIXED (BUG #1): Correctly assign the health text color
         healthText.Color = options.healthTextColor[1];
         healthText.Transparency = options.healthTextColor[2];
         healthText.Outline = options.healthTextOutline;
@@ -702,6 +705,8 @@ function InstanceObject:Render()
         distance.Position = (corners.bottomLeft + corners.bottomRight)*0.5 + DISTANCE_OFFSET;
     end
 end
+
+
 
 -- interface
 local EspInterface = {
@@ -813,33 +818,39 @@ local EspInterface = {
 	}
 };
 
+-- vvvv NEW, SMARTER FUNCTION vvvv
 function EspInterface.AddInstance(instance, options)
 	local cache = EspInterface._objectCache;
 	
+	-- Check if a handler exists AND if it hasn't been destroyed
 	if cache[instance] and cache[instance][1] and not cache[instance][1].isDestroyed then
+		-- A valid handler already exists. Let's re-use it.
 		local existingObject = cache[instance][1];
 		
+		-- Update its options with the new ones, in case they changed
 		for key, value in pairs(options) do
 			existingObject.options[key] = value;
 		end
 		
+		-- Ensure it's enabled and visible
 		existingObject.options.enabled = true;
 		
+		-- Return the existing handler instead of creating a new one
 		return existingObject;
 	else
+		-- The handler doesn't exist, or the old one was destroyed.
+		-- We'll create a new one, overwriting any old/destroyed entry.
 		local newObject = InstanceObject.new(instance, options);
 		cache[instance] = { newObject };
 		return newObject;
 	end
 end
 
--- ====== FIXED FUNCTIONS START ======
 
 function EspInterface.Load()
 	assert(not EspInterface._hasLoaded, "Esp has already been loaded.");
 
 	local function createObject(player)
-		if player == localPlayer then return end -- Don't draw ESP on self
 		EspInterface._objectCache[player] = {
 			EspObject.new(player, EspInterface),
 			ChamObject.new(player, EspInterface)
@@ -856,14 +867,19 @@ function EspInterface.Load()
 		end
 	end
 
-    -- Load for existing players
-	for i, player in ipairs(players:GetPlayers()) do
-		createObject(player);
+	local plrs = players:GetPlayers();
+	for i = 1, #plrs do
+        if plrs[i] ~= localPlayer then
+		    createObject(plrs[i]);
+        end
 	end
 
-    -- Connect to future player events
-	EspInterface._playerAddedConn = players.PlayerAdded:Connect(createObject);
-	EspInterface._playerRemovingConn = players.PlayerRemoving:Connect(removeObject);
+	EspInterface.playerAdded = players.PlayerAdded:Connect(function(player)
+        if player ~= localPlayer then
+            createObject(player)
+        end
+    end);
+	EspInterface.playerRemoving:Connect(removeObject);
 	EspInterface._hasLoaded = true;
 end
 
@@ -871,28 +887,16 @@ function EspInterface.Unload()
 	assert(EspInterface._hasLoaded, "Esp has not been loaded yet.");
 
 	for index, object in next, EspInterface._objectCache do
-        if object then
-		    for i = 1, #object do
-			    object[i]:Destruct();
-		    end
-        end
+		for i = 1, #object do
+			object[i]:Destruct();
+		end
 		EspInterface._objectCache[index] = nil;
 	end
-    
-    -- Disconnect from events
-    if EspInterface._playerAddedConn then
-	    EspInterface._playerAddedConn:Disconnect();
-        EspInterface._playerAddedConn = nil;
-    end
-    if EspInterface._playerRemovingConn then
-	    EspInterface._playerRemovingConn:Disconnect();
-        EspInterface._playerRemovingConn = nil;
-    end
 
+	EspInterface.playerAdded:Disconnect();
+	EspInterface.playerRemoving:Disconnect();
 	EspInterface._hasLoaded = false;
 end
-
--- ====== FIXED FUNCTIONS END ======
 
 -- game specific functions
 function EspInterface.getWeapon(player)
