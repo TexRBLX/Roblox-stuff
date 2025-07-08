@@ -107,14 +107,39 @@ local function rotateVector(vector, radians)
 	return Vector2.new(x*c - y*s, x*s + y*c);
 end
 
--- MODIFIED: This function now supports custom team colors via the 'mainColor' property.
+-- NEW HELPER FUNCTION: Merges custom team settings with a base to prevent errors.
+local function getMergedOptions(interface, teamName)
+	local teamOptions = interface.teamSettings[teamName]
+
+	if not teamOptions then
+		return interface.teamSettings.enemy
+	end
+
+	local baseTeamName = teamName == "friendly" and "friendly" or (teamOptions.base or "enemy")
+	local baseOptions = interface.teamSettings[baseTeamName]
+
+	if baseTeamName == teamName or not baseOptions then
+		return teamOptions
+	end
+
+	local mergedOptions = {}
+	for k, v in pairs(baseOptions) do
+		mergedOptions[k] = v
+	end
+
+	for k, v in pairs(teamOptions) do
+		mergedOptions[k] = v
+	end
+
+	return mergedOptions
+end
+
+
 local function parseColor(self, color, isOutline)
 	if color == "Team Color" or (self.interface.sharedSettings.useTeamColor and not isOutline) then
-		-- Prioritize the 'mainColor' from the player's current team options.
 		if self.options and self.options.mainColor then
 			return self.options.mainColor
 		end
-		-- Fallback to the old system for compatibility.
 		return self.interface.getTeamColor(self.player) or Color3.new(1,1,1);
 	end
 	return color;
@@ -207,10 +232,9 @@ end
 function EspObject:Update()
 	local interface = self.interface;
 
-	-- MODIFIED: Use the customizable getCustomTeam function to get the correct settings.
+	-- FIXED: Use the merging function to get a complete options table.
 	local teamName = interface.getCustomTeam(self.player)
-	-- Fallback to 'enemy' settings if the custom team doesn't exist in teamSettings.
-	self.options = interface.teamSettings[teamName] or interface.teamSettings.enemy;
+	self.options = getMergedOptions(interface, teamName)
 
 	self.character = interface.getCharacter(self.player);
 	self.health, self.maxHealth = interface.getHealth(self.player);
@@ -273,7 +297,6 @@ function EspObject:Render()
 	local options = self.options;
 	local corners = self.corners;
 
-    -- If no options are found (e.g., team doesn't exist), do not render.
     if not options then
         for _, obj in pairs(visible) do obj.Visible = false end
         for _, obj in pairs(hidden) do obj.Visible = false end
@@ -478,9 +501,9 @@ function ChamObject:Update()
 	local interface = self.interface;
 	local character = interface.getCharacter(self.player);
 
-	-- MODIFIED: Use the customizable getCustomTeam function.
+	-- FIXED: Use the merging function to get a complete options table.
 	local teamName = interface.getCustomTeam(self.player)
-	local options = interface.teamSettings[teamName] or interface.teamSettings.enemy;
+	local options = getMergedOptions(interface, teamName)
 
 	local enabled = options and options.enabled and character and not
 		(#interface.whitelist > 0 and not find(interface.whitelist, self.player.UserId));
@@ -519,8 +542,8 @@ function InstanceObject:Construct()
 	options.text = options.text or "{name}";
 	options.textColor = options.textColor or { Color3.new(1,1,1), 1 };
 	options.textOutline = options.textOutline == nil and true or options.textOutline;
-    options.nameTextSize = options.nameTextSize or 13; -- ADD THIS
-    options.healthTextSize = options.healthTextSize or 13; -- ADD THIS
+    options.nameTextSize = options.nameTextSize or 13;
+    options.healthTextSize = options.healthTextSize or 13;
 	options.textOutlineColor = options.textOutlineColor or Color3.new();
 	options.textSize = options.textSize or 13;
 	options.textFont = options.textFont or 2;
@@ -736,7 +759,6 @@ local EspInterface = {
 		maxDistance = 150,
 		useTeamColor = false
 	},
-	-- MODIFIED: Default settings now use "Team Color" to automatically use the mainColor.
 	teamSettings = {
 		enemy = {
 			enabled = false,
@@ -915,13 +937,10 @@ function EspInterface.getWeapon(player)
 	return "Unknown";
 end
 
--- NEW: This function can be overwritten for custom team logic.
 function EspInterface.getCustomTeam(player)
-	-- Default behavior: uses Roblox's team system.
 	return player.Team and player.Team == localPlayer.Team and "friendly" or "enemy";
 end
 
--- Kept for backward compatibility but getCustomTeam is now the primary method.
 function EspInterface.getTeamColor(player)
 	return player.Team and player.Team.TeamColor and player.Team.TeamColor.Color;
 end
