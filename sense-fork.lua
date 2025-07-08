@@ -534,7 +534,6 @@ end
 function InstanceObject:Construct()
 	local options = self.options;
     
-	-- Set default values for all options to prevent errors
 	options.enabled = options.enabled == nil and true or options.enabled;
 	options.limitDistance = options.limitDistance or false;
 	options.maxDistance = options.maxDistance or 150;
@@ -566,7 +565,6 @@ function InstanceObject:Construct()
     options.healthTextColor = options.healthTextColor or { Color3.new(1,1,1), 1 };
     options.healthTextOutline = options.healthTextOutline or true;
     options.healthTextOutlineColor = options.healthTextOutlineColor or Color3.new();
-	-- NEW: Default highlight options
 	options.highlight = options.highlight or false;
 	options.highlightFillColor = options.highlightFillColor or { Color3.new(1, 0, 0), 0.5 };
 	options.highlightOutlineColor = options.highlightOutlineColor or { Color3.new(0, 0, 0), 0 };
@@ -594,7 +592,6 @@ function InstanceObject:Construct()
     self.drawings.healthBar.Thickness = 1;
     self.drawings.healthBarOutline.Thickness = 3;
 
-	-- NEW: Create a highlight instance for this object
 	self.highlight = Instance.new("Highlight", container)
 
 	self.renderConnection = runService.Heartbeat:Connect(function(deltaTime)
@@ -607,7 +604,6 @@ function InstanceObject:Destruct()
     for _, drawing in pairs(self.drawings) do
         drawing:Remove();
     end
-	-- NEW: Destroy the highlight instance
 	if self.highlight then
 		self.highlight:Destroy()
 	end
@@ -660,19 +656,10 @@ function InstanceObject:Render()
 		return;
 	end
 
-	if options.limitDistance and depth > options.maxDistance then
-		onScreen = false;
-	end
-
-    local corners = calculateCorners(cframe, size);
-    
-    if onScreen and not corners then return end
-
-	-- NEW: Highlight Rendering
+	-- FIXED: Highlight logic updated to be independent of 2D on-screen checks
 	local highlight = self.highlight
-	local highlightEnabled = onScreen and options.highlight
-	highlight.Enabled = highlightEnabled
-	if highlightEnabled then
+	highlight.Enabled = options.highlight
+	if options.highlight then
 		highlight.Adornee = adornee
 		highlight.FillColor = options.highlightFillColor[1]
 		highlight.FillTransparency = options.highlightFillColor[2]
@@ -681,6 +668,17 @@ function InstanceObject:Render()
 		highlight.DepthMode = options.highlightVisibleOnly and "Occluded" or "AlwaysOnTop"
 	else
 		highlight.Adornee = nil
+	end
+
+	if options.limitDistance and depth > options.maxDistance then
+		onScreen = false;
+	end
+
+    local corners = calculateCorners(cframe, size);
+    
+    if onScreen and not corners then
+		for _, d in pairs(drawings) do d.Visible = false end;
+		return
 	end
 
     -- Box Rendering
