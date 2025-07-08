@@ -851,6 +851,8 @@ function EspInterface.Load()
 	assert(not EspInterface._hasLoaded, "Esp has already been loaded.");
 
 	local function createObject(player)
+		-- Don't create an ESP object for the local player
+		if player == localPlayer then return end
 		EspInterface._objectCache[player] = {
 			EspObject.new(player, EspInterface),
 			ChamObject.new(player, EspInterface)
@@ -867,19 +869,14 @@ function EspInterface.Load()
 		end
 	end
 
-	local plrs = players:GetPlayers();
-	for i = 1, #plrs do
-        if plrs[i] ~= localPlayer then
-		    createObject(plrs[i]);
-        end
+    -- Create objects for players already in the game
+	for _, player in ipairs(players:GetPlayers()) do
+		createObject(player);
 	end
 
-	EspInterface.playerAdded = players.PlayerAdded:Connect(function(player)
-        if player ~= localPlayer then
-            createObject(player)
-        end
-    end);
-	EspInterface.playerRemoving:Connect(removeObject);
+    -- Correctly connect to the Players service events and store the connections
+	EspInterface._playerAddedConn = players.PlayerAdded:Connect(createObject);
+	EspInterface._playerRemovingConn = players.PlayerRemoving:Connect(removeObject);
 	EspInterface._hasLoaded = true;
 end
 
@@ -887,16 +884,27 @@ function EspInterface.Unload()
 	assert(EspInterface._hasLoaded, "Esp has not been loaded yet.");
 
 	for index, object in next, EspInterface._objectCache do
-		for i = 1, #object do
-			object[i]:Destruct();
-		end
+        if object then
+		    for i = 1, #object do
+			    object[i]:Destruct();
+		    end
+        end
 		EspInterface._objectCache[index] = nil;
 	end
+    
+    -- Correctly disconnect the stored connections
+    if EspInterface._playerAddedConn then
+	    EspInterface._playerAddedConn:Disconnect();
+        EspInterface._playerAddedConn = nil;
+    end
+    if EspInterface._playerRemovingConn then
+	    EspInterface._playerRemovingConn:Disconnect();
+        EspInterface._playerRemovingConn = nil;
+    end
 
-	EspInterface.playerAdded:Disconnect();
-	EspInterface.playerRemoving:Disconnect();
 	EspInterface._hasLoaded = false;
 end
+
 
 -- game specific functions
 function EspInterface.getWeapon(player)
