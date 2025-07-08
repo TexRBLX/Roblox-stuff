@@ -1,4 +1,3 @@
-print("loaded sense fork")
 -- services
 local runService = game:GetService("RunService");
 local players = game:GetService("Players");
@@ -85,7 +84,7 @@ local function calculateCorners(cframe, size)
 	local cornersT = create(#VERTICES);
     for i = 1, #VERTICES do
         local p, v, z = worldToScreen((cframe + size*0.5*VERTICES[i]).Position)
-        if z < 0 then return nil end
+        if z < 0 then return nil end -- If any corner is behind the camera, abort.
 		cornersT[i] = p
 	end
     
@@ -108,43 +107,12 @@ local function rotateVector(vector, radians)
 	return Vector2.new(x*c - y*s, x*s + y*c);
 end
 
-local function getMergedOptions(interface, teamName)
-	local teamOptions = interface.teamSettings[teamName]
-
-	if not teamOptions then
-		return interface.teamSettings.enemy
-	end
-
-	local baseTeamName = teamName == "friendly" and "friendly" or (teamOptions.base or "enemy")
-	local baseOptions = interface.teamSettings[baseTeamName]
-
-	if baseTeamName == teamName or not baseOptions then
-		return teamOptions
-	end
-
-	local mergedOptions = {}
-	for k, v in pairs(baseOptions) do
-		mergedOptions[k] = v
-	end
-
-	for k, v in pairs(teamOptions) do
-		mergedOptions[k] = v
-	end
-
-	return mergedOptions
-end
-
-
 local function parseColor(self, color, isOutline)
 	if color == "Team Color" or (self.interface.sharedSettings.useTeamColor and not isOutline) then
-		if self.options and self.options.mainColor then
-			return self.options.mainColor
-		end
 		return self.interface.getTeamColor(self.player) or Color3.new(1,1,1);
 	end
 	return color;
 end
-
 
 -- esp object
 local EspObject = {};
@@ -232,13 +200,11 @@ end
 function EspObject:Update()
 	local interface = self.interface;
 
-	local teamName = interface.getCustomTeam(self.player)
-	self.options = getMergedOptions(interface, teamName)
-
+	self.options = interface.teamSettings[interface.isFriendly(self.player) and "friendly" or "enemy"];
 	self.character = interface.getCharacter(self.player);
 	self.health, self.maxHealth = interface.getHealth(self.player);
 	self.weapon = interface.getWeapon(self.player);
-	self.enabled = self.options and self.options.enabled and self.character and not
+	self.enabled = self.options.enabled and self.character and not
 		(#interface.whitelist > 0 and not find(interface.whitelist, self.player.UserId));
 
 	local head = self.enabled and findFirstChild(self.character, "Head");
@@ -250,6 +216,7 @@ function EspObject:Update()
 
 	local _, onScreen, depth = worldToScreen(head.Position);
     
+    -- FIXED (BUG #2): Prevent drawing when object is behind the camera
     if depth < 0 then
         onScreen = false
     end
@@ -278,7 +245,7 @@ function EspObject:Update()
 		end
 
 		self.corners = calculateCorners(getBoundingBox(cache));
-	elseif self.options and self.options.offScreenArrow then
+	elseif self.options.offScreenArrow then
 		local cframe = camera.CFrame;
 		local flat = fromMatrix(cframe.Position, cframe.RightVector, Vector3.yAxis);
 		local objectSpace = pointToObjectSpace(flat, head.Position);
@@ -295,13 +262,6 @@ function EspObject:Render()
 	local interface = self.interface;
 	local options = self.options;
 	local corners = self.corners;
-
-    if not options then
-        for _, obj in pairs(visible) do obj.Visible = false end
-        for _, obj in pairs(hidden) do obj.Visible = false end
-        for i = 1, #box3d do for _, line in ipairs(box3d[i]) do line.Visible = false end end
-        return
-    end
 
     if onScreen and not corners then return end
 
@@ -367,7 +327,6 @@ function EspObject:Render()
 	visible.name.Visible = enabled and onScreen and options.name;
 	if visible.name.Visible then
 		local name = visible.name;
-		name.Text = self.player.DisplayName
 		name.Size = interface.sharedSettings.textSize;
 		name.Font = interface.sharedSettings.textFont;
 		name.Color = parseColor(self, options.nameColor[1]);
@@ -448,10 +407,8 @@ function EspObject:Render()
 		for i2 = 1, #face do
 			local line = face[i2];
 			line.Visible = box3dEnabled;
-			if box3dEnabled then
-				line.Color = parseColor(self, options.box3dColor[1]);
-				line.Transparency = options.box3dColor[2];
-			end
+			line.Color = parseColor(self, options.box3dColor[1]);
+			line.Transparency = options.box3dColor[2];
 		end
 
 		if box3dEnabled then
@@ -500,11 +457,8 @@ function ChamObject:Update()
 	local highlight = self.highlight;
 	local interface = self.interface;
 	local character = interface.getCharacter(self.player);
-
-	local teamName = interface.getCustomTeam(self.player)
-	local options = getMergedOptions(interface, teamName)
-
-	local enabled = options and options.enabled and character and not
+	local options = interface.teamSettings[interface.isFriendly(self.player) and "friendly" or "enemy"];
+	local enabled = options.enabled and character and not
 		(#interface.whitelist > 0 and not find(interface.whitelist, self.player.UserId));
 
 	highlight.Enabled = enabled and options.chams;
@@ -519,7 +473,7 @@ function ChamObject:Update()
 end
 
 -- =================================================================
--- FINAL InstanceObject Class (MODIFIED)
+-- FINAL InstanceObject Class
 -- =================================================================
 local InstanceObject = {};
 InstanceObject.__index = InstanceObject;
@@ -538,12 +492,11 @@ function InstanceObject:Construct()
 	options.enabled = options.enabled == nil and true or options.enabled;
 	options.limitDistance = options.limitDistance or false;
 	options.maxDistance = options.maxDistance or 150;
-	options.name = options.name or false;
 	options.text = options.text or "{name}";
 	options.textColor = options.textColor or { Color3.new(1,1,1), 1 };
 	options.textOutline = options.textOutline == nil and true or options.textOutline;
-    options.nameTextSize = options.nameTextSize or 13;
-    options.healthTextSize = options.healthTextSize or 13;
+        options.nameTextSize = options.nameTextSize or 13; -- ADD THIS
+        options.healthTextSize = options.healthTextSize or 13; -- ADD THIS
 	options.textOutlineColor = options.textOutlineColor or Color3.new();
 	options.textSize = options.textSize or 13;
 	options.textFont = options.textFont or 2;
@@ -566,10 +519,6 @@ function InstanceObject:Construct()
     options.healthTextColor = options.healthTextColor or { Color3.new(1,1,1), 1 };
     options.healthTextOutline = options.healthTextOutline or true;
     options.healthTextOutlineColor = options.healthTextOutlineColor or Color3.new();
-	options.highlight = options.highlight or false;
-	options.highlightFillColor = options.highlightFillColor or { Color3.new(1, 0, 0), 0.5 };
-	options.highlightOutlineColor = options.highlightOutlineColor or { Color3.new(0, 0, 0), 0 };
-	options.highlightVisibleOnly = options.highlightVisibleOnly or false;
 
 	self.drawings = {
         name = Drawing.new("Text"),
@@ -593,8 +542,6 @@ function InstanceObject:Construct()
     self.drawings.healthBar.Thickness = 1;
     self.drawings.healthBarOutline.Thickness = 3;
 
-	self.highlight = Instance.new("Highlight", container)
-
 	self.renderConnection = runService.Heartbeat:Connect(function(deltaTime)
 		self:Render(deltaTime);
 	end);
@@ -605,9 +552,6 @@ function InstanceObject:Destruct()
     for _, drawing in pairs(self.drawings) do
         drawing:Remove();
     end
-	if self.highlight then
-		self.highlight:Destroy()
-	end
     self.isDestroyed = true
 end
 
@@ -620,10 +564,9 @@ function InstanceObject:Render()
 	local drawings = self.drawings;
 	local options = self.options;
     
-    local cframe, size, worldPosition, humanoid, adornee
+    local cframe, size, worldPosition, humanoid
     
     if instance:IsA("Model") then
-		adornee = instance
         local parts = {};
         for _, part in ipairs(instance:GetDescendants()) do
             if part:IsA("BasePart") or part:IsA("UnionOperation") then
@@ -636,7 +579,6 @@ function InstanceObject:Render()
         humanoid = instance:FindFirstChildOfClass("Humanoid")
 
     elseif instance:IsA("BasePart") then
-		adornee = instance.Parent:IsA("Model") and instance.Parent or instance
         cframe = instance.CFrame
         size = instance.Size
         worldPosition = cframe.Position
@@ -647,28 +589,14 @@ function InstanceObject:Render()
     
 	local screenPosition, onScreen, depth = worldToScreen(worldPosition);
 
+    -- FIXED (BUG #2): Prevent drawing when object is behind the camera
     if depth < 0 then
         onScreen = false
     end
 
 	if not options.enabled then
         for _, d in pairs(drawings) do d.Visible = false end;
-		self.highlight.Enabled = false
 		return;
-	end
-
-	-- FIXED: Highlight logic updated to be independent of 2D on-screen checks
-	local highlight = self.highlight
-	highlight.Enabled = options.highlight
-	if options.highlight then
-		highlight.Adornee = adornee
-		highlight.FillColor = options.highlightFillColor[1]
-		highlight.FillTransparency = options.highlightFillColor[2]
-		highlight.OutlineColor = options.highlightOutlineColor[1]
-		highlight.OutlineTransparency = options.highlightOutlineColor[2]
-		highlight.DepthMode = options.highlightVisibleOnly and "Occluded" or "AlwaysOnTop"
-	else
-		highlight.Adornee = nil
 	end
 
 	if options.limitDistance and depth > options.maxDistance then
@@ -677,10 +605,7 @@ function InstanceObject:Render()
 
     local corners = calculateCorners(cframe, size);
     
-    if onScreen and not corners then
-		for _, d in pairs(drawings) do d.Visible = false end;
-		return
-	end
+    if onScreen and not corners then return end
 
     -- Box Rendering
     drawings.box.Visible = onScreen and options.box;
@@ -744,6 +669,7 @@ function InstanceObject:Render()
         healthText.Text = round(health) .. "hp";
         healthText.Size = options.healthTextSize;
         healthText.Font = options.textFont;
+        -- FIXED (BUG #1): Correctly assign the health text color
         healthText.Color = options.healthTextColor[1];
         healthText.Transparency = options.healthTextColor[2];
         healthText.Outline = options.healthTextOutline;
@@ -753,7 +679,7 @@ function InstanceObject:Render()
 
     -- Name Text Rendering
     local name = drawings.name;
-	name.Visible = onScreen and options.name;
+	name.Visible = onScreen;
 	if name.Visible then
 		name.Color = options.textColor[1];
 		name.Transparency = options.textColor[2];
@@ -761,7 +687,7 @@ function InstanceObject:Render()
 		name.OutlineColor = options.textOutlineColor;
 		name.Size = options.nameTextSize;
 		name.Font = options.textFont;
-		name.Text = options.text:gsub("{name}", adornee.Name) 
+		name.Text = options.text:gsub("{name}", instance.Name) 
         name.Position = (corners.topLeft + corners.topRight)*0.5 - Vector2.yAxis*name.TextBounds.Y - NAME_OFFSET;
 	end
 
@@ -797,9 +723,8 @@ local EspInterface = {
 	teamSettings = {
 		enemy = {
 			enabled = false,
-			mainColor = Color3.new(1,0,0),
 			box = false,
-			boxColor = { "Team Color", 1 },
+			boxColor = { Color3.new(1,0,0), 1 },
 			boxOutline = true,
 			boxOutlineColor = { Color3.new(), 1 },
 			boxFill = false,
@@ -814,7 +739,7 @@ local EspInterface = {
 			healthTextOutline = true,
 			healthTextOutlineColor = Color3.new(),
 			box3d = false,
-			box3dColor = { "Team Color", 1 },
+			box3dColor = { Color3.new(1,0,0), 1 },
 			name = false,
 			nameColor = { Color3.new(1,1,1), 1 },
 			nameOutline = true,
@@ -829,7 +754,7 @@ local EspInterface = {
 			distanceOutlineColor = Color3.new(),
 			tracer = false,
 			tracerOrigin = "Bottom",
-			tracerColor = { "Team Color", 1 },
+			tracerColor = { Color3.new(1,0,0), 1 },
 			tracerOutline = true,
 			tracerOutlineColor = { Color3.new(), 1 },
 			offScreenArrow = false,
@@ -841,13 +766,12 @@ local EspInterface = {
 			chams = false,
 			chamsVisibleOnly = false,
 			chamsFillColor = { Color3.new(0.2, 0.2, 0.2), 0.5 },
-			chamsOutlineColor = { "Team Color", 0 },
+			chamsOutlineColor = { Color3.new(1,0,0), 0 },
 		},
 		friendly = {
 			enabled = false,
-			mainColor = Color3.new(0,1,0),
 			box = false,
-			boxColor = { "Team Color", 1 },
+			boxColor = { Color3.new(0,1,0), 1 },
 			boxOutline = true,
 			boxOutlineColor = { Color3.new(), 1 },
 			boxFill = false,
@@ -862,7 +786,7 @@ local EspInterface = {
 			healthTextOutline = true,
 			healthTextOutlineColor = Color3.new(),
 			box3d = false,
-			box3dColor = { "Team Color", 1 },
+			box3dColor = { Color3.new(0,1,0), 1 },
 			name = false,
 			nameColor = { Color3.new(1,1,1), 1 },
 			nameOutline = true,
@@ -877,7 +801,7 @@ local EspInterface = {
 			distanceOutlineColor = Color3.new(),
 			tracer = false,
 			tracerOrigin = "Bottom",
-			tracerColor = { "Team Color", 1 },
+			tracerColor = { Color3.new(0,1,0), 1 },
 			tracerOutline = true,
 			tracerOutlineColor = { Color3.new(), 1 },
 			offScreenArrow = false,
@@ -889,22 +813,33 @@ local EspInterface = {
 			chams = false,
 			chamsVisibleOnly = false,
 			chamsFillColor = { Color3.new(0.2, 0.2, 0.2), 0.5 },
-			chamsOutlineColor = { "Team Color", 0 }
+			chamsOutlineColor = { Color3.new(0,1,0), 0 }
 		}
 	}
 };
 
+-- vvvv NEW, SMARTER FUNCTION vvvv
 function EspInterface.AddInstance(instance, options)
 	local cache = EspInterface._objectCache;
 	
+	-- Check if a handler exists AND if it hasn't been destroyed
 	if cache[instance] and cache[instance][1] and not cache[instance][1].isDestroyed then
+		-- A valid handler already exists. Let's re-use it.
 		local existingObject = cache[instance][1];
+		
+		-- Update its options with the new ones, in case they changed
 		for key, value in pairs(options) do
 			existingObject.options[key] = value;
 		end
+		
+		-- Ensure it's enabled and visible
 		existingObject.options.enabled = true;
+		
+		-- Return the existing handler instead of creating a new one
 		return existingObject;
 	else
+		-- The handler doesn't exist, or the old one was destroyed.
+		-- We'll create a new one, overwriting any old/destroyed entry.
 		local newObject = InstanceObject.new(instance, options);
 		cache[instance] = { newObject };
 		return newObject;
@@ -916,6 +851,7 @@ function EspInterface.Load()
 	assert(not EspInterface._hasLoaded, "Esp has already been loaded.");
 
 	local function createObject(player)
+		-- Don't create an ESP object for the local player
 		if player == localPlayer then return end
 		EspInterface._objectCache[player] = {
 			EspObject.new(player, EspInterface),
@@ -933,10 +869,12 @@ function EspInterface.Load()
 		end
 	end
 
+    -- Create objects for players already in the game
 	for _, player in ipairs(players:GetPlayers()) do
 		createObject(player);
 	end
 
+    -- Correctly connect to the Players service events and store the connections
 	EspInterface._playerAddedConn = players.PlayerAdded:Connect(createObject);
 	EspInterface._playerRemovingConn = players.PlayerRemoving:Connect(removeObject);
 	EspInterface._hasLoaded = true;
@@ -954,6 +892,7 @@ function EspInterface.Unload()
 		EspInterface._objectCache[index] = nil;
 	end
     
+    -- Correctly disconnect the stored connections
     if EspInterface._playerAddedConn then
 	    EspInterface._playerAddedConn:Disconnect();
         EspInterface._playerAddedConn = nil;
@@ -972,8 +911,8 @@ function EspInterface.getWeapon(player)
 	return "Unknown";
 end
 
-function EspInterface.getCustomTeam(player)
-	return player.Team and player.Team == localPlayer.Team and "friendly" or "enemy";
+function EspInterface.isFriendly(player)
+	return player.Team and player.Team == localPlayer.Team;
 end
 
 function EspInterface.getTeamColor(player)
