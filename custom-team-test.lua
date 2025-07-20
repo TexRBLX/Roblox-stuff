@@ -1,4 +1,4 @@
-print("loaded new, new")
+print("loaded new, new, fixed")
 -- services
 local runService = game:GetService("RunService");
 local players = game:GetService("Players");
@@ -540,7 +540,7 @@ function InstanceObject:Construct()
 	options.maxDistance = options.maxDistance or 150;
 	options.name = options.name or false;
 	options.text = options.text or "{name}";
-	options.textColor = options.textColor or { Color3.new(1,1,1), 1 };
+	options.textColor = options.textColor or { Color3.new(1,1,1), 0 }; -- FIXED DEFAULT
 	options.textOutline = options.textOutline == nil and true or options.textOutline;
     options.nameTextSize = options.nameTextSize or 13;
     options.healthTextSize = options.healthTextSize or 13;
@@ -548,11 +548,11 @@ function InstanceObject:Construct()
 	options.textSize = options.textSize or 13;
 	options.textFont = options.textFont or 2;
     options.distance = options.distance or false;
-    options.distanceColor = options.distanceColor or { Color3.new(1,1,1), 1 };
+    options.distanceColor = options.distanceColor or { Color3.new(1,1,1), 0 }; -- FIXED DEFAULT
     options.distanceOutline = options.distanceOutline or true;
     options.distanceOutlineColor = options.distanceOutlineColor or Color3.new();
     options.box = options.box or false;
-    options.boxColor = options.boxColor or { Color3.new(1,1,1), 1 };
+    options.boxColor = options.boxColor or { Color3.new(1,1,1), 0 }; -- FIXED DEFAULT
     options.boxOutline = options.boxOutline or true;
     options.boxOutlineColor = { Color3.new(), 1 };
     options.boxFill = options.boxFill or false;
@@ -563,7 +563,7 @@ function InstanceObject:Construct()
     options.healthBarOutline = options.healthBarOutline or true;
     options.healthBarOutlineColor = { Color3.new(), 0.5 };
     options.healthText = options.healthText or false;
-    options.healthTextColor = options.healthTextColor or { Color3.new(1,1,1), 1 };
+    options.healthTextColor = options.healthTextColor or { Color3.new(1,1,1), 0 }; -- FIXED DEFAULT
     options.healthTextOutline = options.healthTextOutline or true;
     options.healthTextOutlineColor = options.healthTextOutlineColor or Color3.new();
 	options.highlight = options.highlight or false;
@@ -657,7 +657,6 @@ function InstanceObject:Render()
 		return;
 	end
 
-	-- FIXED: Highlight logic updated to be independent of 2D on-screen checks
 	local highlight = self.highlight
 	highlight.Enabled = options.highlight
 	if options.highlight then
@@ -753,15 +752,21 @@ function InstanceObject:Render()
 
     -- Name Text Rendering
     local name = drawings.name;
-	name.Visible = onScreen and options.name;
+    -- FIXED: Check for options.text instead of options.name
+	name.Visible = onScreen and options.text and options.text ~= "";
 	if name.Visible then
 		name.Color = options.textColor[1];
 		name.Transparency = options.textColor[2];
 		name.Outline = options.textOutline;
 		name.OutlineColor = options.textOutlineColor;
-		name.Size = options.nameTextSize;
+		name.Size = options.nameTextSize or options.textSize;
 		name.Font = options.textFont;
-		name.Text = options.text:gsub("{name}", adornee.Name) 
+        -- FIXED: Handle static text correctly
+		if options.text:find("{name}") then
+            name.Text = options.text:gsub("{name}", adornee.Name) 
+        else
+            name.Text = options.text
+        end
         name.Position = (corners.topLeft + corners.topRight)*0.5 - Vector2.yAxis*name.TextBounds.Y - NAME_OFFSET;
 	end
 
@@ -993,4 +998,4 @@ function EspInterface.getHealth(player)
 	return 100, 100;
 end
 
-return EspInterface;
+return EspInterface
