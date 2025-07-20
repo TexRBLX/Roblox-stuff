@@ -216,7 +216,6 @@ function EspObject:Update()
 
 	local _, onScreen, depth = worldToScreen(head.Position);
     
-    -- FIXED (BUG #2): Prevent drawing when object is behind the camera
     if depth < 0 then
         onScreen = false
     end
@@ -493,19 +492,20 @@ function InstanceObject:Construct()
 	options.limitDistance = options.limitDistance or false;
 	options.maxDistance = options.maxDistance or 150;
 	options.text = options.text or "{name}";
-	options.textColor = options.textColor or { Color3.new(1,1,1), 1 };
+	-- FIXED: Default transparency for textColor is now 0 (opaque) instead of 1 (invisible).
+	options.textColor = options.textColor or { Color3.new(1,1,1), 0 }; 
 	options.textOutline = options.textOutline == nil and true or options.textOutline;
-        options.nameTextSize = options.nameTextSize or 13; -- ADD THIS
-        options.healthTextSize = options.healthTextSize or 13; -- ADD THIS
+    options.nameTextSize = options.nameTextSize or 13;
+    options.healthTextSize = options.healthTextSize or 13;
 	options.textOutlineColor = options.textOutlineColor or Color3.new();
 	options.textSize = options.textSize or 13;
 	options.textFont = options.textFont or 2;
     options.distance = options.distance or false;
-    options.distanceColor = options.distanceColor or { Color3.new(1,1,1), 1 };
+    options.distanceColor = options.distanceColor or { Color3.new(1,1,1), 0 }; -- FIXED: Default transparency to 0
     options.distanceOutline = options.distanceOutline or true;
     options.distanceOutlineColor = options.distanceOutlineColor or Color3.new();
     options.box = options.box or false;
-    options.boxColor = options.boxColor or { Color3.new(1,1,1), 1 };
+    options.boxColor = options.boxColor or { Color3.new(1,1,1), 0 }; -- FIXED: Default transparency to 0
     options.boxOutline = options.boxOutline or true;
     options.boxOutlineColor = { Color3.new(), 1 };
     options.boxFill = options.boxFill or false;
@@ -516,7 +516,7 @@ function InstanceObject:Construct()
     options.healthBarOutline = options.healthBarOutline or true;
     options.healthBarOutlineColor = { Color3.new(), 0.5 };
     options.healthText = options.healthText or false;
-    options.healthTextColor = options.healthTextColor or { Color3.new(1,1,1), 1 };
+    options.healthTextColor = options.healthTextColor or { Color3.new(1,1,1), 0 }; -- FIXED: Default transparency to 0
     options.healthTextOutline = options.healthTextOutline or true;
     options.healthTextOutlineColor = options.healthTextOutlineColor or Color3.new();
 
@@ -589,7 +589,6 @@ function InstanceObject:Render()
     
 	local screenPosition, onScreen, depth = worldToScreen(worldPosition);
 
-    -- FIXED (BUG #2): Prevent drawing when object is behind the camera
     if depth < 0 then
         onScreen = false
     end
@@ -605,7 +604,10 @@ function InstanceObject:Render()
 
     local corners = calculateCorners(cframe, size);
     
-    if onScreen and not corners then return end
+    if onScreen and not corners then 
+        for _, d in pairs(drawings) do d.Visible = false end
+        return 
+    end
 
     -- Box Rendering
     drawings.box.Visible = onScreen and options.box;
@@ -669,7 +671,6 @@ function InstanceObject:Render()
         healthText.Text = round(health) .. "hp";
         healthText.Size = options.healthTextSize;
         healthText.Font = options.textFont;
-        -- FIXED (BUG #1): Correctly assign the health text color
         healthText.Color = options.healthTextColor[1];
         healthText.Transparency = options.healthTextColor[2];
         healthText.Outline = options.healthTextOutline;
@@ -679,15 +680,20 @@ function InstanceObject:Render()
 
     -- Name Text Rendering
     local name = drawings.name;
-	name.Visible = onScreen;
+	name.Visible = onScreen and options.text and options.text ~= "";
 	if name.Visible then
 		name.Color = options.textColor[1];
 		name.Transparency = options.textColor[2];
 		name.Outline = options.textOutline;
 		name.OutlineColor = options.textOutlineColor;
-		name.Size = options.nameTextSize;
+		name.Size = options.nameTextSize or options.textSize;
 		name.Font = options.textFont;
-		name.Text = options.text:gsub("{name}", instance.Name) 
+        -- FIXED: Correctly handle static text for non-player objects
+		if options.text:find("{name}") then
+            name.Text = options.text:gsub("{name}", instance.Name) 
+        else
+            name.Text = options.text
+        end
         name.Position = (corners.topLeft + corners.topRight)*0.5 - Vector2.yAxis*name.TextBounds.Y - NAME_OFFSET;
 	end
 
@@ -818,28 +824,20 @@ local EspInterface = {
 	}
 };
 
--- vvvv NEW, SMARTER FUNCTION vvvv
 function EspInterface.AddInstance(instance, options)
 	local cache = EspInterface._objectCache;
 	
-	-- Check if a handler exists AND if it hasn't been destroyed
 	if cache[instance] and cache[instance][1] and not cache[instance][1].isDestroyed then
-		-- A valid handler already exists. Let's re-use it.
 		local existingObject = cache[instance][1];
 		
-		-- Update its options with the new ones, in case they changed
 		for key, value in pairs(options) do
 			existingObject.options[key] = value;
 		end
 		
-		-- Ensure it's enabled and visible
 		existingObject.options.enabled = true;
 		
-		-- Return the existing handler instead of creating a new one
 		return existingObject;
 	else
-		-- The handler doesn't exist, or the old one was destroyed.
-		-- We'll create a new one, overwriting any old/destroyed entry.
 		local newObject = InstanceObject.new(instance, options);
 		cache[instance] = { newObject };
 		return newObject;
@@ -851,7 +849,6 @@ function EspInterface.Load()
 	assert(not EspInterface._hasLoaded, "Esp has already been loaded.");
 
 	local function createObject(player)
-		-- Don't create an ESP object for the local player
 		if player == localPlayer then return end
 		EspInterface._objectCache[player] = {
 			EspObject.new(player, EspInterface),
@@ -869,12 +866,10 @@ function EspInterface.Load()
 		end
 	end
 
-    -- Create objects for players already in the game
-	for _, player in ipairs(players:GetPlayers()) do
+    for _, player in ipairs(players:GetPlayers()) do
 		createObject(player);
 	end
 
-    -- Correctly connect to the Players service events and store the connections
 	EspInterface._playerAddedConn = players.PlayerAdded:Connect(createObject);
 	EspInterface._playerRemovingConn = players.PlayerRemoving:Connect(removeObject);
 	EspInterface._hasLoaded = true;
@@ -892,7 +887,6 @@ function EspInterface.Unload()
 		EspInterface._objectCache[index] = nil;
 	end
     
-    -- Correctly disconnect the stored connections
     if EspInterface._playerAddedConn then
 	    EspInterface._playerAddedConn:Disconnect();
         EspInterface._playerAddedConn = nil;
