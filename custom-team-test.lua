@@ -1,4 +1,3 @@
-print("loaded new, new, fixed")
 -- services
 local runService = game:GetService("RunService");
 local players = game:GetService("Players");
