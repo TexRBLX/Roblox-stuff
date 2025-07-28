@@ -1066,7 +1066,15 @@ ObsidianContainer.DescendantRemoving:Connect(function(Instance)
 end)
 
 -- This will be our replacement for the Modal property, to block clicks behind the UI.
-local modalBlockerFrame = nil
+local modalBlockerFrame = New("Frame", {
+    Name = "ObsidianModalBlocker",
+    Size = UDim2.fromScale(1, 1),
+    BackgroundTransparency = 1, -- Completely invisible
+    Visible = false, -- Start hidden
+    Active = true, -- Make sure it intercepts mouse events
+    ZIndex = 1, -- ZIndex is 1 to be behind the MainFrame (which is 2)
+    Parent = Library.ScreenGui
+})
 
 --// Cursor
 local Cursor
@@ -6376,7 +6384,7 @@ function Library:CreateWindow(WindowInfo)
         end
 
         MainFrame.Visible = Library.Toggled
-        ModalElement.Modal = Library.Toggled
+        modalBlockerFrame.Visible = Library.Toggled -- This is the corrected line
 
         if Library.Toggled and not Library.IsMobile then
             local OldMouseIconEnabled = UserInputService.MouseIconEnabled
