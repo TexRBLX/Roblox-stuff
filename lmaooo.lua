@@ -895,7 +895,7 @@ end
 
 local FetchIcons, Icons = pcall(function()
     return loadstring(
-        game:HttpGet("https://raw.githubusercontent.com/deividcomsono/lucide-roblox-direct/refs/heads/main/source.lua")
+        game:HttpGet("https://raw.githubusercontent.com/TexRBLX/Roblox-stuff/refs/heads/main/lucide.lua")
     )()
 end)
 function Library:GetIcon(IconName: string)
