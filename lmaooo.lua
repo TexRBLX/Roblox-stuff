@@ -126,7 +126,6 @@ do
             return AssetData.Id
         end
 
-        -- Directly construct the asset ID from the RobloxId.
         local AssetID = `rbxassetid://{AssetData.RobloxId}`
 
         AssetData.Id = AssetID
