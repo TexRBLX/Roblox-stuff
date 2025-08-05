@@ -2188,18 +2188,20 @@ do
             Size = UDim2.fromOffset(200, 200),
             Parent = ColorHolder,
         })
-
+        
+        -- Saturation gradient (white to transparent) - VERTICAL
         New("UIGradient", {
             Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.new(1, 1, 1)),
             Transparency = NumberSequence.new(0, 1),
-            Rotation = 0,
+            Rotation = 90,
             Parent = SatVipMap,
         })
 
+        -- Value gradient (transparent to black) - HORIZONTAL
         New("UIGradient", {
             Color = ColorSequence.new(Color3.new(0, 0, 0), Color3.new(0, 0, 0)),
             Transparency = NumberSequence.new(1, 0),
-            Rotation = 90,
+            Rotation = 0,
             Parent = SatVipMap,
         })
 
@@ -2376,7 +2378,7 @@ do
                 TransparencyColor.BackgroundColor3 = ColorPicker.Value
             end
 
-            SatVibCursor.Position = UDim2.fromScale(ColorPicker.Sat, 1 - ColorPicker.Vib)
+            SatVibCursor.Position = UDim2.fromScale(1 - ColorPicker.Vib, ColorPicker.Sat)
             HueCursor.Position = UDim2.fromScale(0.5, ColorPicker.Hue)
             if TransparencyCursor then
                 TransparencyCursor.Position = UDim2.fromScale(0.5, ColorPicker.Transparency)
@@ -2426,12 +2428,15 @@ do
 
                 local MinY = SatVipMap.AbsolutePosition.Y
                 local MaxY = MinY + SatVipMap.AbsoluteSize.Y
-                local LocationY = math.clamp(Mouse.Y, MinY, MaxY)
+                local LocationY = amath.clamp(Mouse.Y, MinY, MaxY)
 
                 local OldSat = ColorPicker.Sat
                 local OldVib = ColorPicker.Vib
-                ColorPicker.Sat = (LocationX - MinX) / (MaxX - MinX)
-                ColorPicker.Vib = 1 - ((LocationY - MinY) / (MaxY - MinY))
+
+                -- Value is on the X axis (left = 1, right = 0)
+                ColorPicker.Vib = 1 - ((LocationX - MinX) / (MaxX - MinX))
+                -- Saturation is on the Y axis (top = 0, bottom = 1)
+                ColorPicker.Sat = ((LocationY - MinY) / (MaxY - MinY))
 
                 if ColorPicker.Sat ~= OldSat or ColorPicker.Vib ~= OldVib then
                     ColorPicker:Update()
