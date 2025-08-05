@@ -2428,7 +2428,7 @@ do
 
                 local MinY = SatVipMap.AbsolutePosition.Y
                 local MaxY = MinY + SatVipMap.AbsoluteSize.Y
-                local LocationY = amath.clamp(Mouse.Y, MinY, MaxY)
+                local LocationY = math.clamp(Mouse.Y, MinY, MaxY)
 
                 local OldSat = ColorPicker.Sat
                 local OldVib = ColorPicker.Vib
