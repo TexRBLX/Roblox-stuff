@@ -346,7 +346,6 @@ function EspObject:Render()
         for _, obj in pairs(visible) do obj.Visible = false end
         for _, obj in pairs(hidden) do obj.Visible = false end
         for i = 1, #box3d do for _, line in ipairs(box3d[i]) do line.Visible = false end end
-        -- [ADDED] Hide skeleton lines if options are not available
         for _, line in ipairs(self.drawings.skeleton) do line.Visible = false end
         for _, line in ipairs(self.drawings.skeletonOutline) do line.Visible = false end
         return
@@ -531,7 +530,8 @@ function EspObject:Render()
         local p1 = self.skeletonScreenPoints and self.skeletonScreenPoints[p1Name];
         local p2 = self.skeletonScreenPoints and self.skeletonScreenPoints[p2Name];
         
-        local canDraw = skeletonEnabled and p1 and p2;
+        -- FIX: Ensure canDraw is always a boolean
+        local canDraw = skeletonEnabled and p1 and p2 and true or false;
         
         line.Visible = canDraw;
         outline.Visible = canDraw and options.skeletonOutline;
@@ -548,9 +548,14 @@ function EspObject:Render()
                 outline.From = p1;
                 outline.To = p2;
             end
+        else
+            -- Explicitly hide if not drawable
+            line.Visible = false
+            outline.Visible = false
         end
     end
 end
+
 
 -- cham object
 local ChamObject = {};
