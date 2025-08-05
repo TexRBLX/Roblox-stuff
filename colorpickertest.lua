@@ -1734,6 +1734,376 @@ local BaseAddons = {}
 do
     local Funcs = {}
 
+    function Funcs:AddKeyPicker(Idx, Info)
+        Info = Library:Validate(Info, Templates.KeyPicker)
+
+        local ParentObj = self
+        local ToggleLabel = ParentObj.TextLabel
+
+        local KeyPicker = {
+            Text = Info.Text,
+            Value = Info.Default,
+            Toggled = false,
+            Mode = Info.Mode,
+            SyncToggleState = Info.SyncToggleState,
+
+            Callback = Info.Callback,
+            ChangedCallback = Info.ChangedCallback,
+            Changed = Info.Changed,
+            Clicked = Info.Clicked,
+
+            Type = "KeyPicker",
+        }
+
+        if KeyPicker.SyncToggleState then
+            Info.Modes = { "Toggle" }
+            Info.Mode = "Toggle"
+        end
+
+        local Picker = New("TextButton", {
+            BackgroundColor3 = "MainColor",
+            BorderColor3 = "OutlineColor",
+            BorderSizePixel = 1,
+            Size = UDim2.fromOffset(18, 18),
+            Text = KeyPicker.Value,
+            TextSize = 14,
+            Parent = ToggleLabel,
+        })
+
+        local KeybindsToggle = {
+            Normal = KeyPicker.Mode ~= "Toggle",
+        }
+        do
+            local Holder = New("TextButton", {
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, 0, 0, 16),
+                Text = "",
+                Visible = not Info.NoUI,
+                Parent = Library.KeybindContainer,
+            })
+
+            local Label = New("TextLabel", {
+                BackgroundTransparency = 1,
+                Size = UDim2.fromScale(1, 1),
+                Text = "",
+                TextSize = 14,
+                TextTransparency = 0.5,
+                Parent = Holder,
+
+                DPIExclude = {
+                    Size = true,
+                },
+            })
+
+            local Checkbox = New("Frame", {
+                BackgroundColor3 = "MainColor",
+                Size = UDim2.fromOffset(14, 14),
+                SizeConstraint = Enum.SizeConstraint.RelativeYY,
+                Parent = Holder,
+            })
+            New("UICorner", {
+                CornerRadius = UDim.new(0, Library.CornerRadius / 2),
+                Parent = Checkbox,
+            })
+            New("UIStroke", {
+                Color = "OutlineColor",
+                Parent = Checkbox,
+            })
+
+            local CheckImage = New("ImageLabel", {
+                Image = CheckIcon and CheckIcon.Url or "",
+                ImageColor3 = "FontColor",
+                ImageRectOffset = CheckIcon and CheckIcon.ImageRectOffset or Vector2.zero,
+                ImageRectSize = CheckIcon and CheckIcon.ImageRectSize or Vector2.zero,
+                ImageTransparency = 1,
+                Position = UDim2.fromOffset(2, 2),
+                Size = UDim2.new(1, -4, 1, -4),
+                Parent = Checkbox,
+            })
+
+            function KeybindsToggle:Display(State)
+                Label.TextTransparency = State and 0 or 0.5
+                CheckImage.ImageTransparency = State and 0 or 1
+            end
+
+            function KeybindsToggle:SetText(Text)
+                local X = Library:GetTextBounds(Text, Label.FontFace, Label.TextSize)
+                Label.Text = Text
+                Label.Size = UDim2.new(0, X, 1, 0)
+            end
+
+            function KeybindsToggle:SetVisibility(Visibility)
+                Holder.Visible = Visibility
+            end
+
+            function KeybindsToggle:SetNormal(Normal)
+                KeybindsToggle.Normal = Normal
+
+                Holder.Active = not Normal
+                Label.Position = Normal and UDim2.fromOffset(0, 0) or UDim2.fromOffset(22 * Library.DPIScale, 0)
+                Checkbox.Visible = not Normal
+            end
+
+            Holder.MouseButton1Click:Connect(function()
+                if KeybindsToggle.Normal then
+                    return
+                end
+
+                KeyPicker.Toggled = not KeyPicker.Toggled
+                KeyPicker:DoClick()
+            end)
+
+            KeybindsToggle.Holder = Holder
+            KeybindsToggle.Label = Label
+            KeybindsToggle.Checkbox = Checkbox
+            KeybindsToggle.Loaded = true
+            table.insert(Library.KeybindToggles, KeybindsToggle)
+        end
+
+        local MenuTable = Library:AddContextMenu(Picker, UDim2.fromOffset(62, 0), function()
+            return { Picker.AbsoluteSize.X + 1.5, 0.5 }
+        end, 1)
+        KeyPicker.Menu = MenuTable
+
+        local ModeButtons = {}
+        for _, Mode in pairs(Info.Modes) do
+            local ModeButton = {}
+
+            local Button = New("TextButton", {
+                BackgroundColor3 = "MainColor",
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, 0, 0, 21),
+                Text = Mode,
+                TextSize = 14,
+                TextTransparency = 0.5,
+                Parent = MenuTable.Menu,
+            })
+
+            function ModeButton:Select()
+                for _, Button in pairs(ModeButtons) do
+                    Button:Deselect()
+                end
+
+                KeyPicker.Mode = Mode
+
+                Button.BackgroundTransparency = 0
+                Button.TextTransparency = 0
+
+                MenuTable:Close()
+            end
+
+            function ModeButton:Deselect()
+                KeyPicker.Mode = nil
+
+                Button.BackgroundTransparency = 1
+                Button.TextTransparency = 0.5
+            end
+
+            Button.MouseButton1Click:Connect(function()
+                ModeButton:Select()
+            end)
+
+            if KeyPicker.Mode == Mode then
+                ModeButton:Select()
+            end
+
+            ModeButtons[Mode] = ModeButton
+        end
+
+        function KeyPicker:Display()
+            if Library.Unloaded then
+                return
+            end
+
+            local X, Y =
+                Library:GetTextBounds(KeyPicker.Value, Picker.FontFace, Picker.TextSize, ToggleLabel.AbsoluteSize.X)
+            Picker.Text = KeyPicker.Value
+            Picker.Size = UDim2.fromOffset(X + 9 * Library.DPIScale, Y + 4 * Library.DPIScale)
+        end
+
+        function KeyPicker:Update()
+            KeyPicker:Display()
+
+            if Info.NoUI then
+                return
+            end
+
+            if KeyPicker.Mode == "Toggle" and ParentObj.Type == "Toggle" and ParentObj.Disabled then
+                KeybindsToggle:SetVisibility(false)
+                return
+            end
+
+            local State = KeyPicker:GetState()
+            local ShowToggle = Library.ShowToggleFrameInKeybinds and KeyPicker.Mode == "Toggle"
+
+            if KeybindsToggle.Loaded then
+                if ShowToggle then
+                    KeybindsToggle:SetNormal(false)
+                else
+                    KeybindsToggle:SetNormal(true)
+                end
+
+                KeybindsToggle:SetText(("[%s] %s (%s)"):format(KeyPicker.Value, KeyPicker.Text, KeyPicker.Mode))
+                KeybindsToggle:SetVisibility(true)
+                KeybindsToggle:Display(State)
+            end
+
+            Library:UpdateKeybindFrame()
+        end
+
+        function KeyPicker:GetState()
+            if KeyPicker.Mode == "Always" then
+                return true
+            elseif KeyPicker.Mode == "Hold" then
+                local Key = KeyPicker.Value
+                if Key == "None" then
+                    return false
+                end
+
+                if Key == "MB1" or Key == "MB2" then
+                    return Key == "MB1" and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+                        or Key == "MB2" and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+                end
+
+                return UserInputService:IsKeyDown(Enum.KeyCode[KeyPicker.Value])
+                    and not UserInputService:GetFocusedTextBox()
+            else
+                return KeyPicker.Toggled
+            end
+        end
+
+        function KeyPicker:OnChanged(Func)
+            KeyPicker.Changed = Func
+        end
+
+        function KeyPicker:OnClick(Func)
+            KeyPicker.Clicked = Func
+        end
+
+        function KeyPicker:DoClick()
+            if ParentObj.Type == "Toggle" and KeyPicker.SyncToggleState then
+                ParentObj:SetValue(KeyPicker.Toggled)
+            end
+
+            Library:SafeCallback(KeyPicker.Callback, KeyPicker.Toggled)
+            Library:SafeCallback(KeyPicker.Changed, KeyPicker.Toggled)
+        end
+
+        function KeyPicker:SetValue(Data)
+            local Key, Mode = Data[1], Data[2]
+
+            KeyPicker.Value = Key
+            if ModeButtons[Mode] then
+                ModeButtons[Mode]:Select()
+            end
+
+            KeyPicker:Update()
+        end
+
+        function KeyPicker:SetText(Text)
+            KeybindsToggle:SetText(Text)
+            KeyPicker:Update()
+        end
+
+        local Picking = false
+        Picker.MouseButton1Click:Connect(function()
+            if Picking then
+                return
+            end
+
+            Picking = true
+
+            Picker.Text = "..."
+            Picker.Size = UDim2.fromOffset(29 * Library.DPIScale, 18 * Library.DPIScale)
+
+            local Input = UserInputService.InputBegan:Wait()
+            local Key = "Unknown"
+
+            if Input.UserInputType == Enum.UserInputType.Keyboard then
+                Key = Input.KeyCode == Enum.KeyCode.Escape and "None" or Input.KeyCode.Name
+            elseif Input.UserInputType == Enum.UserInputType.MouseButton1 then
+                Key = "MB1"
+            elseif Input.UserInputType == Enum.UserInputType.MouseButton2 then
+                Key = "MB2"
+            end
+
+            KeyPicker.Value = Key
+            KeyPicker:Update()
+
+            Library:SafeCallback(
+                KeyPicker.ChangedCallback,
+                Input.KeyCode == Enum.KeyCode.Unknown and Input.UserInputType or Input.KeyCode
+            )
+            Library:SafeCallback(
+                KeyPicker.Changed,
+                Input.KeyCode == Enum.KeyCode.Unknown and Input.UserInputType or Input.KeyCode
+            )
+
+            RunService.RenderStepped:Wait()
+            Picking = false
+        end)
+        Picker.MouseButton2Click:Connect(MenuTable.Toggle)
+
+        Library:GiveSignal(UserInputService.InputBegan:Connect(function(Input: InputObject)
+            if
+                KeyPicker.Mode == "Always"
+                or KeyPicker.Value == "Unknown"
+                or KeyPicker.Value == "None"
+                or Picking
+                or UserInputService:GetFocusedTextBox()
+            then
+                return
+            end
+
+            if KeyPicker.Mode == "Toggle" then
+                local Key = KeyPicker.Value
+
+                if Key == "MB1" or Key == "MB2" then
+                    if
+                        Key == "MB1" and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+                        or Key == "MB2" and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+                    then
+                        KeyPicker.Toggled = not KeyPicker.Toggled
+                        KeyPicker:DoClick()
+                    end
+                elseif Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == Key then
+                    KeyPicker.Toggled = not KeyPicker.Toggled
+                    KeyPicker:DoClick()
+                end
+            end
+
+            KeyPicker:Update()
+        end))
+
+        Library:GiveSignal(UserInputService.InputEnded:Connect(function()
+            if
+                KeyPicker.Value == "Unknown"
+                or KeyPicker.Value == "None"
+                or Picking
+                or UserInputService:GetFocusedTextBox()
+            then
+                return
+            end
+
+            KeyPicker:Update()
+        end))
+
+        KeyPicker:Update()
+
+        if ParentObj.Addons then
+            table.insert(ParentObj.Addons, KeyPicker)
+        end
+
+        Options[Idx] = KeyPicker
+
+        return self
+    end
+
+    local HueSequenceTable = {}
+    for Hue = 0, 1, 0.1 do
+        table.insert(HueSequenceTable, ColorSequenceKeypoint.new(Hue, Color3.fromHSV(Hue, 1, 1)))
+    end
+	
     function Funcs:AddColorPicker(Idx, Info)
         Info = Library:Validate(Info, Templates.ColorPicker)
 
@@ -1833,402 +2203,6 @@ do
             Parent = SatVipMap,
         })
 
-
-        local SatVibCursor = New("Frame", {
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            BackgroundColor3 = "White",
-            Size = UDim2.fromOffset(6, 6),
-            Parent = SatVipMap,
-        })
-        New("UICorner", {
-            CornerRadius = UDim.new(1, 0),
-            Parent = SatVibCursor,
-        })
-        New("UIStroke", {
-            Color = "Dark",
-            Parent = SatVibCursor,
-        })
-
-        --// Hue
-        local HueSelector = New("TextButton", {
-            Size = UDim2.fromOffset(16, 200),
-            Text = "",
-            Parent = ColorHolder,
-        })
-        New("UIGradient", {
-            Color = ColorSequence.new(HueSequenceTable),
-            Rotation = 90,
-            Parent = HueSelector,
-        })
-
-        local HueCursor = New("Frame", {
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            BackgroundColor3 = "White",
-            BorderColor3 = "Dark",
-            BorderSizePixel = 1,
-            Position = UDim2.fromScale(0.5, ColorPicker.Hue),
-            Size = UDim2.new(1, 2, 0, 1),
-            Parent = HueSelector,
-        })
-
-        --// Alpha
-        local TransparencySelector, TransparencyColor, TransparencyCursor
-        if Info.Transparency then
-            TransparencySelector = New("ImageButton", {
-                Image = "",
-                ScaleType = Enum.ScaleType.Tile,
-                Size = UDim2.fromOffset(16, 200),
-                TileSize = UDim2.fromOffset(8, 8),
-                Parent = ColorHolder,
-            })
-
-            TransparencyColor = New("Frame", {
-                BackgroundColor3 = ColorPicker.Value,
-                Size = UDim2.fromScale(1, 1),
-                Parent = TransparencySelector,
-            })
-            New("UIGradient", {
-                Rotation = 90,
-                Transparency = NumberSequence.new({
-                    NumberSequenceKeypoint.new(0, 0),
-                    NumberSequenceKeypoint.new(1, 1),
-                }),
-                Parent = TransparencyColor,
-            })
-
-            TransparencyCursor = New("Frame", {
-                AnchorPoint = Vector2.new(0.5, 0.5),
-                BackgroundColor3 = "White",
-                BorderColor3 = "Dark",
-                BorderSizePixel = 1,
-                Position = UDim2.fromScale(0.5, ColorPicker.Transparency),
-                Size = UDim2.new(1, 2, 0, 1),
-                Parent = TransparencySelector,
-            })
-        end
-
-        local InfoHolder = New("Frame", {
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 20),
-            Parent = ColorMenu.Menu,
-        })
-        New("UIListLayout", {
-            FillDirection = Enum.FillDirection.Horizontal,
-            HorizontalFlex = Enum.UIFlexAlignment.Fill,
-            Padding = UDim.new(0, 8),
-            Parent = InfoHolder,
-        })
-
-        local HueBox = New("TextBox", {
-            BackgroundColor3 = "MainColor",
-            BorderColor3 = "OutlineColor",
-            BorderSizePixel = 1,
-            ClearTextOnFocus = false,
-            Size = UDim2.fromScale(1, 1),
-            Text = "#??????",
-            TextSize = 14,
-            Parent = InfoHolder,
-        })
-
-        local RgbBox = New("TextBox", {
-            BackgroundColor3 = "MainColor",
-            BorderColor3 = "OutlineColor",
-            BorderSizePixel = 1,
-            ClearTextOnFocus = false,
-            Size = UDim2.fromScale(1, 1),
-            Text = "?, ?, ?",
-            TextSize = 14,
-            Parent = InfoHolder,
-        })
-
-        --// Context Menu \\--
-        local ContextMenu = Library:AddContextMenu(Holder, UDim2.fromOffset(93, 0), function()
-            return { Holder.AbsoluteSize.X + 1.5, 0.5 }
-        end, 1)
-        ColorPicker.ContextMenu = ContextMenu
-        do
-            local function CreateButton(Text, Func)
-                local Button = New("TextButton", {
-                    BackgroundTransparency = 1,
-                    Size = UDim2.new(1, 0, 0, 21),
-                    Text = Text,
-                    TextSize = 14,
-                    Parent = ContextMenu.Menu,
-                })
-
-                Button.MouseButton1Click:Connect(function()
-                    Library:SafeCallback(Func)
-                    ContextMenu:Close()
-                end)
-            end
-
-            CreateButton("Copy color", function()
-                Library.CopiedColor = { ColorPicker.Value, ColorPicker.Transparency }
-            end)
-
-            CreateButton("Paste color", function()
-                ColorPicker:SetValueRGB(Library.CopiedColor[1], Library.CopiedColor[2])
-            end)
-
-            if setclipboard then
-                CreateButton("Copy Hex", function()
-                    setclipboard(tostring(ColorPicker.Value:ToHex()))
-                end)
-                CreateButton("Copy RGB", function()
-                    setclipboard(table.concat({
-                        math.floor(ColorPicker.Value.R * 255),
-                        math.floor(ColorPicker.Value.G * 255),
-                        math.floor(ColorPicker.Value.B * 255),
-                    }, ", "))
-                end)
-            end
-        end
-
-        --// End \\--
-
-        function ColorPicker:SetHSVFromRGB(Color)
-            ColorPicker.Hue, ColorPicker.Sat, ColorPicker.Vib = Color:ToHSV()
-        end
-
-        function ColorPicker:Display()
-            if Library.Unloaded then
-                return
-            end
-
-            ColorPicker.Value = Color3.fromHSV(ColorPicker.Hue, ColorPicker.Sat, ColorPicker.Vib)
-
-            Holder.BackgroundColor3 = ColorPicker.Value
-            Holder.BorderColor3 = Library:GetDarkerColor(ColorPicker.Value)
-            HolderTransparency.ImageTransparency = (1 - ColorPicker.Transparency)
-
-            SatVipMap.BackgroundColor3 = Color3.fromHSV(ColorPicker.Hue, 1, 1)
-            if TransparencyColor then
-                TransparencyColor.BackgroundColor3 = ColorPicker.Value
-            end
-
-            SatVibCursor.Position = UDim2.fromScale(ColorPicker.Sat, 1 - ColorPicker.Vib)
-            HueCursor.Position = UDim2.fromScale(0.5, ColorPicker.Hue)
-            if TransparencyCursor then
-                TransparencyCursor.Position = UDim2.fromScale(0.5, ColorPicker.Transparency)
-            end
-
-            HueBox.Text = "#" .. ColorPicker.Value:ToHex()
-            RgbBox.Text = table.concat({
-                math.floor(ColorPicker.Value.R * 255),
-                math.floor(ColorPicker.Value.G * 255),
-                math.floor(ColorPicker.Value.B * 255),
-            }, ", ")
-        end
-
-        function ColorPicker:Update()
-            ColorPicker:Display()
-
-            Library:SafeCallback(ColorPicker.Callback, ColorPicker.Value)
-            Library:SafeCallback(ColorPicker.Changed, ColorPicker.Value)
-        end
-
-        function ColorPicker:OnChanged(Func)
-            ColorPicker.Changed = Func
-        end
-
-        function ColorPicker:SetValue(HSV, Transparency)
-            local Color = Color3.fromHSV(HSV[1], HSV[2], HSV[3])
-
-            ColorPicker.Transparency = Info.Transparency and Transparency or 0
-            ColorPicker:SetHSVFromRGB(Color)
-            ColorPicker:Update()
-        end
-
-        function ColorPicker:SetValueRGB(Color, Transparency)
-            ColorPicker.Transparency = Info.Transparency and Transparency or 0
-            ColorPicker:SetHSVFromRGB(Color)
-            ColorPicker:Update()
-        end
-
-        Holder.MouseButton1Click:Connect(ColorMenu.Toggle)
-        Holder.MouseButton2Click:Connect(ContextMenu.Toggle)
-
-        SatVipMap.InputBegan:Connect(function(Input: InputObject)
-            while IsClickInput(Input) do
-                local MinX = SatVipMap.AbsolutePosition.X
-                local MaxX = MinX + SatVipMap.AbsoluteSize.X
-                local LocationX = math.clamp(Mouse.X, MinX, MaxX)
-
-                local MinY = SatVipMap.AbsolutePosition.Y
-                local MaxY = MinY + SatVipMap.AbsoluteSize.Y
-                local LocationY = math.clamp(Mouse.Y, MinY, MaxY)
-
-                local OldSat = ColorPicker.Sat
-                local OldVib = ColorPicker.Vib
-                ColorPicker.Sat = (LocationX - MinX) / (MaxX - MinX)
-                ColorPicker.Vib = 1 - ((LocationY - MinY) / (MaxY - MinY))
-
-                if ColorPicker.Sat ~= OldSat or ColorPicker.Vib ~= OldVib then
-                    ColorPicker:Update()
-                end
-
-                RunService.RenderStepped:Wait()
-            end
-        end)
-        HueSelector.InputBegan:Connect(function(Input: InputObject)
-            while IsClickInput(Input) do
-                local Min = HueSelector.AbsolutePosition.Y
-                local Max = Min + HueSelector.AbsoluteSize.Y
-                local Location = math.clamp(Mouse.Y, Min, Max)
-
-                local OldHue = ColorPicker.Hue
-                ColorPicker.Hue = (Location - Min) / (Max - Min)
-
-                if ColorPicker.Hue ~= OldHue then
-                    ColorPicker:Update()
-                end
-
-                RunService.RenderStepped:Wait()
-            end
-        end)
-        if TransparencySelector then
-            TransparencySelector.InputBegan:Connect(function(Input: InputObject)
-                while IsClickInput(Input) do
-                    local Min = TransparencySelector.AbsolutePosition.Y
-                    local Max = TransparencySelector.AbsolutePosition.Y + TransparencySelector.AbsoluteSize.Y
-                    local Location = math.clamp(Mouse.Y, Min, Max)
-
-                    local OldTransparency = ColorPicker.Transparency
-                    ColorPicker.Transparency = (Location - Min) / (Max - Min)
-
-                    if ColorPicker.Transparency ~= OldTransparency then
-                        ColorPicker:Update()
-                    end
-
-                    RunService.RenderStepped:Wait()
-                end
-            end)
-        end
-
-        HueBox.FocusLost:Connect(function(Enter)
-            if not Enter then
-                return
-            end
-
-            local Success, Color = pcall(Color3.fromHex, HueBox.Text)
-            if Success and typeof(Color) == "Color3" then
-                ColorPicker.Hue, ColorPicker.Sat, ColorPicker.Vib = Color:ToHSV()
-            end
-
-            ColorPicker:Update()
-        end)
-        RgbBox.FocusLost:Connect(function(Enter)
-            if not Enter then
-                return
-            end
-
-            local R, G, B = RgbBox.Text:match("(%d+),%s*(%d+),%s*(%d+)")
-            if R and G and B then
-                ColorPicker:SetHSVFromRGB(Color3.fromRGB(R, G, B))
-            end
-
-            ColorPicker:Update()
-        end)
-
-        ColorPicker:Display()
-
-        if ParentObj.Addons then
-            table.insert(ParentObj.Addons, ColorPicker)
-        end
-
-        Options[Idx] = ColorPicker
-
-        return self
-    end
-
-    local HueSequenceTable = {}
-    for Hue = 0, 1, 0.1 do
-        table.insert(HueSequenceTable, ColorSequenceKeypoint.new(Hue, Color3.fromHSV(Hue, 1, 1)))
-    end
-    function Funcs:AddColorPicker(Idx, Info)
-        Info = Library:Validate(Info, Templates.ColorPicker)
-
-        local ParentObj = self
-        local ToggleLabel = ParentObj.TextLabel
-
-        local ColorPicker = {
-            Value = Info.Default,
-            Transparency = Info.Transparency or 0,
-
-            Callback = Info.Callback,
-            Changed = Info.Changed,
-
-            Type = "ColorPicker",
-        }
-        ColorPicker.Hue, ColorPicker.Sat, ColorPicker.Vib = ColorPicker.Value:ToHSV()
-
-        local Holder = New("TextButton", {
-            BackgroundColor3 = ColorPicker.Value,
-            BorderColor3 = Library:GetDarkerColor(ColorPicker.Value),
-            BorderSizePixel = 1,
-            Size = UDim2.fromOffset(18, 18),
-            Text = "",
-            Parent = ToggleLabel,
-        })
-
-        local HolderTransparency = New("ImageLabel", {
-            Image = "",
-            ImageTransparency = (1 - ColorPicker.Transparency),
-            ScaleType = Enum.ScaleType.Tile,
-            Size = UDim2.fromScale(1, 1),
-            TileSize = UDim2.fromOffset(9, 9),
-            Parent = Holder,
-        })
-
-        --// Color Menu \\--
-        local ColorMenu = Library:AddContextMenu(
-            Holder,
-            UDim2.fromOffset(Info.Transparency and 256 or 234, 0),
-            function()
-                return { 0.5, Holder.AbsoluteSize.Y + 1.5 }
-            end,
-            1
-        )
-        ColorMenu.List.Padding = UDim.new(0, 8)
-        ColorPicker.ColorMenu = ColorMenu
-
-        New("UIPadding", {
-            PaddingBottom = UDim.new(0, 6),
-            PaddingLeft = UDim.new(0, 6),
-            PaddingRight = UDim.new(0, 6),
-            PaddingTop = UDim.new(0, 6),
-            Parent = ColorMenu.Menu,
-        })
-
-        if typeof(Info.Title) == "string" then
-            New("TextLabel", {
-                BackgroundTransparency = 1,
-                Size = UDim2.new(1, 0, 0, 8),
-                Text = Info.Title,
-                TextSize = 14,
-                TextXAlignment = Enum.TextXAlignment.Left,
-                Parent = ColorMenu.Menu,
-            })
-        end
-
-        local ColorHolder = New("Frame", {
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 200),
-            Parent = ColorMenu.Menu,
-        })
-        New("UIListLayout", {
-            FillDirection = Enum.FillDirection.Horizontal,
-            Padding = UDim.new(0, 6),
-            Parent = ColorHolder,
-        })
-
-        --// Sat Map
-        local SatVipMap = New("ImageButton", {
-            BackgroundColor3 = ColorPicker.Value,
-            Image = "",
-            Size = UDim2.fromOffset(200, 200),
-            Parent = ColorHolder,
-        })
 
         local SatVibCursor = New("Frame", {
             AnchorPoint = Vector2.new(0.5, 0.5),
