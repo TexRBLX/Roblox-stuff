@@ -84,7 +84,7 @@ local function calculateCorners(cframe, size)
 	local cornersT = create(#VERTICES);
     for i = 1, #VERTICES do
         local p, v, z = worldToScreen((cframe + size*0.5*VERTICES[i]).Position)
-        if z < 0 then return nil end -- If any corner is behind the camera, abort.
+        if z < 0 then return nil end
 		cornersT[i] = p
 	end
     
@@ -107,12 +107,43 @@ local function rotateVector(vector, radians)
 	return Vector2.new(x*c - y*s, x*s + y*c);
 end
 
+local function getMergedOptions(interface, teamName)
+	local teamOptions = interface.teamSettings[teamName]
+
+	if not teamOptions then
+		return interface.teamSettings.enemy
+	end
+
+	local baseTeamName = teamName == "friendly" and "friendly" or (teamOptions.base or "enemy")
+	local baseOptions = interface.teamSettings[baseTeamName]
+
+	if baseTeamName == teamName or not baseOptions then
+		return teamOptions
+	end
+
+	local mergedOptions = {}
+	for k, v in pairs(baseOptions) do
+		mergedOptions[k] = v
+	end
+
+	for k, v in pairs(teamOptions) do
+		mergedOptions[k] = v
+	end
+
+	return mergedOptions
+end
+
+
 local function parseColor(self, color, isOutline)
 	if color == "Team Color" or (self.interface.sharedSettings.useTeamColor and not isOutline) then
+		if self.options and self.options.mainColor then
+			return self.options.mainColor
+		end
 		return self.interface.getTeamColor(self.player) or Color3.new(1,1,1);
 	end
 	return color;
 end
+
 
 -- esp object
 local EspObject = {};
@@ -200,11 +231,13 @@ end
 function EspObject:Update()
 	local interface = self.interface;
 
-	self.options = interface.teamSettings[interface.isFriendly(self.player) and "friendly" or "enemy"];
+	local teamName = interface.getCustomTeam(self.player)
+	self.options = getMergedOptions(interface, teamName)
+
 	self.character = interface.getCharacter(self.player);
 	self.health, self.maxHealth = interface.getHealth(self.player);
 	self.weapon = interface.getWeapon(self.player);
-	self.enabled = self.options.enabled and self.character and not
+	self.enabled = self.options and self.options.enabled and self.character and not
 		(#interface.whitelist > 0 and not find(interface.whitelist, self.player.UserId));
 
 	local head = self.enabled and findFirstChild(self.character, "Head");
@@ -244,7 +277,7 @@ function EspObject:Update()
 		end
 
 		self.corners = calculateCorners(getBoundingBox(cache));
-	elseif self.options.offScreenArrow then
+	elseif self.options and self.options.offScreenArrow then
 		local cframe = camera.CFrame;
 		local flat = fromMatrix(cframe.Position, cframe.RightVector, Vector3.yAxis);
 		local objectSpace = pointToObjectSpace(flat, head.Position);
@@ -261,6 +294,13 @@ function EspObject:Render()
 	local interface = self.interface;
 	local options = self.options;
 	local corners = self.corners;
+
+    if not options then
+        for _, obj in pairs(visible) do obj.Visible = false end
+        for _, obj in pairs(hidden) do obj.Visible = false end
+        for i = 1, #box3d do for _, line in ipairs(box3d[i]) do line.Visible = false end end
+        return
+    end
 
     if onScreen and not corners then return end
 
@@ -326,6 +366,7 @@ function EspObject:Render()
 	visible.name.Visible = enabled and onScreen and options.name;
 	if visible.name.Visible then
 		local name = visible.name;
+		name.Text = self.player.DisplayName
 		name.Size = interface.sharedSettings.textSize;
 		name.Font = interface.sharedSettings.textFont;
 		name.Color = parseColor(self, options.nameColor[1]);
@@ -406,8 +447,10 @@ function EspObject:Render()
 		for i2 = 1, #face do
 			local line = face[i2];
 			line.Visible = box3dEnabled;
-			line.Color = parseColor(self, options.box3dColor[1]);
-			line.Transparency = options.box3dColor[2];
+			if box3dEnabled then
+				line.Color = parseColor(self, options.box3dColor[1]);
+				line.Transparency = options.box3dColor[2];
+			end
 		end
 
 		if box3dEnabled then
@@ -456,8 +499,11 @@ function ChamObject:Update()
 	local highlight = self.highlight;
 	local interface = self.interface;
 	local character = interface.getCharacter(self.player);
-	local options = interface.teamSettings[interface.isFriendly(self.player) and "friendly" or "enemy"];
-	local enabled = options.enabled and character and not
+
+	local teamName = interface.getCustomTeam(self.player)
+	local options = getMergedOptions(interface, teamName)
+
+	local enabled = options and options.enabled and character and not
 		(#interface.whitelist > 0 and not find(interface.whitelist, self.player.UserId));
 
 	highlight.Enabled = enabled and options.chams;
@@ -472,7 +518,7 @@ function ChamObject:Update()
 end
 
 -- =================================================================
--- FINAL InstanceObject Class
+-- FINAL InstanceObject Class (MODIFIED)
 -- =================================================================
 local InstanceObject = {};
 InstanceObject.__index = InstanceObject;
@@ -485,40 +531,47 @@ function InstanceObject.new(instance, options)
 	return self;
 end
 
+-- =================================================================
+-- REPLACEMENT for InstanceObject:Construct
+-- =================================================================
 function InstanceObject:Construct()
 	local options = self.options;
     
+	-- Correctly set defaults ONLY if a value isn't already provided
 	options.enabled = options.enabled == nil and true or options.enabled;
 	options.limitDistance = options.limitDistance or false;
 	options.maxDistance = options.maxDistance or 150;
 	options.text = options.text or "{name}";
-	-- FIXED: Default transparency for textColor is now 0 (opaque) instead of 1 (invisible).
-	options.textColor = options.textColor or { Color3.new(1,1,1), 0 }; 
+	options.textColor = options.textColor or { Color3.new(1,1,1), 0 };
 	options.textOutline = options.textOutline == nil and true or options.textOutline;
-    options.nameTextSize = options.nameTextSize or 13;
-    options.healthTextSize = options.healthTextSize or 13;
-	options.textOutlineColor = options.textOutlineColor or Color3.new();
+	options.textOutlineColor = options.textOutlineColor or Color3.new(0,0,0);
 	options.textSize = options.textSize or 13;
 	options.textFont = options.textFont or 2;
-    options.distance = options.distance or false;
-    options.distanceColor = options.distanceColor or { Color3.new(1,1,1), 0 }; -- FIXED: Default transparency to 0
-    options.distanceOutline = options.distanceOutline or true;
-    options.distanceOutlineColor = options.distanceOutlineColor or Color3.new();
-    options.box = options.box or false;
-    options.boxColor = options.boxColor or { Color3.new(1,1,1), 0 }; -- FIXED: Default transparency to 0
-    options.boxOutline = options.boxOutline or true;
-    options.boxOutlineColor = { Color3.new(), 1 };
-    options.boxFill = options.boxFill or false;
-    options.boxFillColor = options.boxFillColor or { Color3.new(1,1,1), 0.5};
-    options.healthBar = options.healthBar or false;
-    options.healthyColor = options.healthyColor or Color3.new(0,1,0);
-    options.dyingColor = options.dyingColor or Color3.new(1,0,0);
-    options.healthBarOutline = options.healthBarOutline or true;
-    options.healthBarOutlineColor = { Color3.new(), 0.5 };
-    options.healthText = options.healthText or false;
-    options.healthTextColor = options.healthTextColor or { Color3.new(1,1,1), 0 }; -- FIXED: Default transparency to 0
-    options.healthTextOutline = options.healthTextOutline or true;
-    options.healthTextOutlineColor = options.healthTextOutlineColor or Color3.new();
+    options.nameTextSize = options.nameTextSize or options.textSize; -- Fallback to main text size
+    options.healthTextSize = options.healthTextSize or options.textSize; -- Fallback to main text size
+	options.distance = options.distance or false;
+	options.distanceColor = options.distanceColor or { Color3.new(1,1,1), 0 };
+	options.distanceOutline = options.distanceOutline or true;
+	options.distanceOutlineColor = options.distanceOutlineColor or Color3.new(0,0,0);
+	options.box = options.box or false;
+	options.boxColor = options.boxColor or { Color3.new(1,1,1), 0 };
+	options.boxOutline = options.boxOutline or true;
+	options.boxOutlineColor = options.boxOutlineColor or { Color3.new(0,0,0), 0 }; -- FIXED BUG: Was overwriting user input
+	options.boxFill = options.boxFill or false;
+	options.boxFillColor = options.boxFillColor or { Color3.new(1,1,1), 0.5};
+	options.healthBar = options.healthBar or false;
+	options.healthyColor = options.healthyColor or Color3.new(0,1,0);
+	options.dyingColor = options.dyingColor or Color3.new(1,0,0);
+	options.healthBarOutline = options.healthBarOutline or true;
+	options.healthBarOutlineColor = options.healthBarOutlineColor or { Color3.new(0,0,0), 0 }; -- FIXED BUG: Was overwriting user input
+	options.healthText = options.healthText or false;
+	options.healthTextColor = options.healthTextColor or { Color3.new(1,1,1), 0 };
+	options.healthTextOutline = options.healthTextOutline or true;
+	options.healthTextOutlineColor = options.healthTextOutlineColor or Color3.new(0,0,0);
+	options.highlight = options.highlight or false;
+	options.highlightFillColor = options.highlightFillColor or { Color3.new(1, 0, 0), 0.5 };
+	options.highlightOutlineColor = options.highlightOutlineColor or { Color3.new(0, 0, 0), 0 };
+	options.highlightVisibleOnly = options.highlightVisibleOnly or false;
 
 	self.drawings = {
         name = Drawing.new("Text"),
@@ -542,6 +595,8 @@ function InstanceObject:Construct()
     self.drawings.healthBar.Thickness = 1;
     self.drawings.healthBarOutline.Thickness = 3;
 
+	self.highlight = Instance.new("Highlight", container)
+
 	self.renderConnection = runService.Heartbeat:Connect(function(deltaTime)
 		self:Render(deltaTime);
 	end);
@@ -552,6 +607,9 @@ function InstanceObject:Destruct()
     for _, drawing in pairs(self.drawings) do
         drawing:Remove();
     end
+	if self.highlight then
+		self.highlight:Destroy()
+	end
     self.isDestroyed = true
 end
 
@@ -564,9 +622,10 @@ function InstanceObject:Render()
 	local drawings = self.drawings;
 	local options = self.options;
     
-    local cframe, size, worldPosition, humanoid
+    local cframe, size, worldPosition, humanoid, adornee
     
     if instance:IsA("Model") then
+		adornee = instance
         local parts = {};
         for _, part in ipairs(instance:GetDescendants()) do
             if part:IsA("BasePart") or part:IsA("UnionOperation") then
@@ -579,6 +638,7 @@ function InstanceObject:Render()
         humanoid = instance:FindFirstChildOfClass("Humanoid")
 
     elseif instance:IsA("BasePart") then
+		adornee = instance.Parent:IsA("Model") and instance.Parent or instance
         cframe = instance.CFrame
         size = instance.Size
         worldPosition = cframe.Position
@@ -595,7 +655,21 @@ function InstanceObject:Render()
 
 	if not options.enabled then
         for _, d in pairs(drawings) do d.Visible = false end;
+		self.highlight.Enabled = false
 		return;
+	end
+
+	local highlight = self.highlight
+	highlight.Enabled = options.highlight
+	if options.highlight then
+		highlight.Adornee = adornee
+		highlight.FillColor = options.highlightFillColor[1]
+		highlight.FillTransparency = options.highlightFillColor[2]
+		highlight.OutlineColor = options.highlightOutlineColor[1]
+		highlight.OutlineTransparency = options.highlightOutlineColor[2]
+		highlight.DepthMode = options.highlightVisibleOnly and "Occluded" or "AlwaysOnTop"
+	else
+		highlight.Adornee = nil
 	end
 
 	if options.limitDistance and depth > options.maxDistance then
@@ -604,10 +678,10 @@ function InstanceObject:Render()
 
     local corners = calculateCorners(cframe, size);
     
-    if onScreen and not corners then 
-        for _, d in pairs(drawings) do d.Visible = false end
-        return 
-    end
+    if onScreen and not corners then
+		for _, d in pairs(drawings) do d.Visible = false end;
+		return
+	end
 
     -- Box Rendering
     drawings.box.Visible = onScreen and options.box;
@@ -680,6 +754,7 @@ function InstanceObject:Render()
 
     -- Name Text Rendering
     local name = drawings.name;
+    -- FIXED: Check for options.text instead of options.name
 	name.Visible = onScreen and options.text and options.text ~= "";
 	if name.Visible then
 		name.Color = options.textColor[1];
@@ -688,9 +763,9 @@ function InstanceObject:Render()
 		name.OutlineColor = options.textOutlineColor;
 		name.Size = options.nameTextSize or options.textSize;
 		name.Font = options.textFont;
-        -- FIXED: Correctly handle static text for non-player objects
+        -- FIXED: Handle static text correctly
 		if options.text:find("{name}") then
-            name.Text = options.text:gsub("{name}", instance.Name) 
+            name.Text = options.text:gsub("{name}", adornee.Name) 
         else
             name.Text = options.text
         end
@@ -729,8 +804,9 @@ local EspInterface = {
 	teamSettings = {
 		enemy = {
 			enabled = false,
+			mainColor = Color3.new(1,0,0),
 			box = false,
-			boxColor = { Color3.new(1,0,0), 1 },
+			boxColor = { "Team Color", 1 },
 			boxOutline = true,
 			boxOutlineColor = { Color3.new(), 1 },
 			boxFill = false,
@@ -745,7 +821,7 @@ local EspInterface = {
 			healthTextOutline = true,
 			healthTextOutlineColor = Color3.new(),
 			box3d = false,
-			box3dColor = { Color3.new(1,0,0), 1 },
+			box3dColor = { "Team Color", 1 },
 			name = false,
 			nameColor = { Color3.new(1,1,1), 1 },
 			nameOutline = true,
@@ -760,7 +836,7 @@ local EspInterface = {
 			distanceOutlineColor = Color3.new(),
 			tracer = false,
 			tracerOrigin = "Bottom",
-			tracerColor = { Color3.new(1,0,0), 1 },
+			tracerColor = { "Team Color", 1 },
 			tracerOutline = true,
 			tracerOutlineColor = { Color3.new(), 1 },
 			offScreenArrow = false,
@@ -772,12 +848,13 @@ local EspInterface = {
 			chams = false,
 			chamsVisibleOnly = false,
 			chamsFillColor = { Color3.new(0.2, 0.2, 0.2), 0.5 },
-			chamsOutlineColor = { Color3.new(1,0,0), 0 },
+			chamsOutlineColor = { "Team Color", 0 },
 		},
 		friendly = {
 			enabled = false,
+			mainColor = Color3.new(0,1,0),
 			box = false,
-			boxColor = { Color3.new(0,1,0), 1 },
+			boxColor = { "Team Color", 1 },
 			boxOutline = true,
 			boxOutlineColor = { Color3.new(), 1 },
 			boxFill = false,
@@ -792,7 +869,7 @@ local EspInterface = {
 			healthTextOutline = true,
 			healthTextOutlineColor = Color3.new(),
 			box3d = false,
-			box3dColor = { Color3.new(0,1,0), 1 },
+			box3dColor = { "Team Color", 1 },
 			name = false,
 			nameColor = { Color3.new(1,1,1), 1 },
 			nameOutline = true,
@@ -807,7 +884,7 @@ local EspInterface = {
 			distanceOutlineColor = Color3.new(),
 			tracer = false,
 			tracerOrigin = "Bottom",
-			tracerColor = { Color3.new(0,1,0), 1 },
+			tracerColor = { "Team Color", 1 },
 			tracerOutline = true,
 			tracerOutlineColor = { Color3.new(), 1 },
 			offScreenArrow = false,
@@ -819,7 +896,7 @@ local EspInterface = {
 			chams = false,
 			chamsVisibleOnly = false,
 			chamsFillColor = { Color3.new(0.2, 0.2, 0.2), 0.5 },
-			chamsOutlineColor = { Color3.new(0,1,0), 0 }
+			chamsOutlineColor = { "Team Color", 0 }
 		}
 	}
 };
@@ -829,13 +906,10 @@ function EspInterface.AddInstance(instance, options)
 	
 	if cache[instance] and cache[instance][1] and not cache[instance][1].isDestroyed then
 		local existingObject = cache[instance][1];
-		
 		for key, value in pairs(options) do
 			existingObject.options[key] = value;
 		end
-		
 		existingObject.options.enabled = true;
-		
 		return existingObject;
 	else
 		local newObject = InstanceObject.new(instance, options);
@@ -866,7 +940,7 @@ function EspInterface.Load()
 		end
 	end
 
-    for _, player in ipairs(players:GetPlayers()) do
+	for _, player in ipairs(players:GetPlayers()) do
 		createObject(player);
 	end
 
@@ -905,8 +979,8 @@ function EspInterface.getWeapon(player)
 	return "Unknown";
 end
 
-function EspInterface.isFriendly(player)
-	return player.Team and player.Team == localPlayer.Team;
+function EspInterface.getCustomTeam(player)
+	return player.Team and player.Team == localPlayer.Team and "friendly" or "enemy";
 end
 
 function EspInterface.getTeamColor(player)
@@ -926,4 +1000,4 @@ function EspInterface.getHealth(player)
 	return 100, 100;
 end
 
-return EspInterface;
+return EspInterface
