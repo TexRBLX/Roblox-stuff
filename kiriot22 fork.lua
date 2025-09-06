@@ -7,29 +7,31 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
 --Settings--
+--Settings--
 local ESP = {
-	Enabled = false,
-	-- 2D Box Settings
-	Boxes = true,
-	BoxShift = CFrame.new(0,-1.5,0),
-	BoxSize = Vector3.new(4,6,0),
-	FaceCamera = false,
-	-- 3D Box Settings 
-	Boxes3D = false,
-	-- Health Bar & Text Settings
-	HealthBars = false,
-	HealthText = false,
-	-- General Settings
-	Names = true,
-	TeamColor = true,
-	Thickness = 2,
-	AttachShift = 1,
-	TeamMates = true,
-	Players = true,
-	Color = Color3.fromRGB(255, 170, 0),
+    Enabled = false,
+    -- 2D Box Settings
+    Boxes = true,
+    BoxShift = CFrame.new(0, -1.5, 0),
+    BoxSize = Vector3.new(4, 6, 0),
+    FaceCamera = false,
+    -- 3D Box Settings
+    Boxes3D = false,
+    -- Health Bar & Text Settings
+    HealthBars = false,
+    HealthText = false,
+    -- General Settings
+    Names = true,
+    Tracers = false, 
+    TeamColor = true,
+    Thickness = 2,
+    AttachShift = 1,
+    TeamMates = true,
+    Players = true,
+    Color = Color3.fromRGB(255, 170, 0),
 
-	Objects = setmetatable({}, { __mode = "kv" }),
-	Overrides = {}
+    Objects = setmetatable({}, { __mode = "kv" }),
+    Overrides = {}
 }
 
 --Declarations--
@@ -232,13 +234,11 @@ function boxBase:Update()
         return
     end
 
-    -- Get Bounding Box and Screen Corners for new features
     local allParts = self.Object:IsA("Model") and self.Object:GetChildren() or {self.Object}
     local cframe, size = getBoundingBox(allParts)
     local corners = calculateCorners(cframe, size)
     
     if not corners then
-        -- Hide all components if object is off-screen
         for i, v in pairs(self.Components) do
             if type(v) == "table" then
                 for _, line in ipairs(v) do line.Visible = false end
@@ -249,7 +249,6 @@ function boxBase:Update()
         return
     end
 
-    -- 3D Box Logic (NEW)
     local show3DBox = ESP.Boxes3D and corners.onScreen
     for i, line in ipairs(self.Components.Box3D) do
         line.Visible = show3DBox
@@ -262,23 +261,22 @@ function boxBase:Update()
         end
     end
 
-    -- 2D Box Logic (Original)
     local show2DBox = ESP.Boxes and not show3DBox and corners.onScreen
     self.Components.Quad.Visible = show2DBox
     if show2DBox then
-        local cf = self.PrimaryPart.CFrame
-        if ESP.FaceCamera then cf = CFrame.new(cf.p, cam.CFrame.p) end
+        local cf2D = self.PrimaryPart.CFrame
+        if ESP.FaceCamera then cf2D = CFrame.new(cf2D.p, cam.CFrame.p) end
         local size2D = self.Size
         local locs = {
-            TopLeft = cf * ESP.BoxShift * CFrame.new(size2D.X / 2, size2D.Y / 2, 0),
-            TopRight = cf * ESP.BoxShift * CFrame.new(-size2D.X / 2, size2D.Y / 2, 0),
-            BottomLeft = cf * ESP.BoxShift * CFrame.new(size2D.X / 2, -size2D.Y / 2, 0),
-            BottomRight = cf * ESP.BoxShift * CFrame.new(-size2D.X / 2, -size2D.Y / 2, 0),
+            TopLeft = cf2D * ESP.BoxShift * CFrame.new(size2D.X / 2, size2D.Y / 2, 0),
+            TopRight = cf2D * ESP.BoxShift * CFrame.new(-size2D.X / 2, size2D.Y / 2, 0),
+            BottomLeft = cf2D * ESP.BoxShift * CFrame.new(size2D.X / 2, -size2D.Y / 2, 0),
+            BottomRight = cf2D * ESP.BoxShift * CFrame.new(-size2D.X / 2, -size2D.Y / 2, 0),
         }
-        local TopLeft, Vis1 = cam:WorldToViewportPoint(locs.TopLeft.p)
-        local TopRight, Vis2 = cam:WorldToViewportPoint(locs.TopRight.p)
-        local BottomLeft, Vis3 = cam:WorldToViewportPoint(locs.BottomLeft.p)
-        local BottomRight, Vis4 = cam:WorldToViewportPoint(locs.BottomRight.p)
+        local TopLeft, _ = cam:WorldToViewportPoint(locs.TopLeft.p)
+        local TopRight, _ = cam:WorldToViewportPoint(locs.TopRight.p)
+        local BottomLeft, _ = cam:WorldToViewportPoint(locs.BottomLeft.p)
+        local BottomRight, _ = cam:WorldToViewportPoint(locs.BottomRight.p)
         self.Components.Quad.PointA = Vector2.new(TopRight.X, TopRight.Y)
         self.Components.Quad.PointB = Vector2.new(TopLeft.X, TopLeft.Y)
         self.Components.Quad.PointC = Vector2.new(BottomLeft.X, BottomLeft.Y)
@@ -286,7 +284,6 @@ function boxBase:Update()
         self.Components.Quad.Color = color
     end
     
-    -- Health Bar & Text Logic (NEW)
     local humanoid = self.Object and self.Object:FindFirstChildOfClass("Humanoid")
     local showHealth = ESP.HealthBars and humanoid and corners.onScreen
     self.Components.HealthBar.Visible = showHealth
@@ -296,17 +293,14 @@ function boxBase:Update()
     if showHealth then
         local health, maxHealth = humanoid.Health, humanoid.MaxHealth
         local healthPercent = math.clamp(health / maxHealth, 0, 1)
-
         local HEALTH_BAR_OFFSET = Vector2.new(5, 0)
         local barTop = corners.topLeft - HEALTH_BAR_OFFSET
         local barBottom = Vector2.new(corners.topLeft.X, corners.bottomRight.Y) - HEALTH_BAR_OFFSET
-
         self.Components.HealthBarOutline.From = barTop - Vector2.new(0,1)
         self.Components.HealthBarOutline.To = barBottom + Vector2.new(0,1)
-
         self.Components.HealthBar.To = barBottom
         self.Components.HealthBar.From = barBottom:Lerp(barTop, healthPercent)
-        self.Components.HealthBar.Color = Color3.fromHSV(0.33 * healthPercent, 1, 1) -- Green to Red interpolation
+        self.Components.HealthBar.Color = Color3.fromHSV(0.33 * healthPercent, 1, 1) 
 
         if ESP.HealthText then
             local healthText = self.Components.HealthText
@@ -316,7 +310,6 @@ function boxBase:Update()
         end
     end
 
-    -- Names, Distance, Tracers (Original)
     local cf = self.PrimaryPart.CFrame
     local size2D = self.Size
     local TagPos, Vis5 = cam:WorldToViewportPoint((cf * ESP.BoxShift * CFrame.new(0, size2D.Y / 2, 0)).p)
@@ -333,12 +326,18 @@ function boxBase:Update()
         self.Components.Distance.Color = color
     end
 
-    local TorsoPos, Vis6 = cam:WorldToViewportPoint((cf * ESP.BoxShift).p)
-    self.Components.Tracer.Visible = ESP.Tracers and Vis6
-    if ESP.Tracers and Vis6 then
-        self.Components.Tracer.From = Vector2.new(TorsoPos.X, TorsoPos.Y)
-        self.Components.Tracer.To = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / ESP.AttachShift)
-        self.Components.Tracer.Color = color
+    if ESP.Tracers then
+        local TorsoPos, Vis6 = cam:WorldToViewportPoint((cf * ESP.BoxShift).p)
+        if Vis6 then
+            self.Components.Tracer.Visible = true
+            self.Components.Tracer.From = Vector2.new(TorsoPos.X, TorsoPos.Y)
+            self.Components.Tracer.To = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / ESP.AttachShift)
+            self.Components.Tracer.Color = color
+        else
+            self.Components.Tracer.Visible = false
+        end
+    else
+        self.Components.Tracer.Visible = false
     end
 end
 
