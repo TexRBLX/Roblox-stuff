@@ -157,7 +157,8 @@ function boxBase:Update()
     end
     
     local humanoid = self.Object and self.Object:FindFirstChildOfClass("Humanoid")
-    local showHealth = ESP.HealthBars and humanoid and corners.onScreen
+    local showHealth = not not (ESP.HealthBars and humanoid and corners.onScreen)
+
     self.Components.HealthBar.Visible, self.Components.HealthBarOutline.Visible = showHealth, showHealth
     self.Components.HealthText.Visible = showHealth and ESP.HealthText
     if showHealth then
@@ -173,7 +174,6 @@ function boxBase:Update()
     local cf = self.PrimaryPart.CFrame; local size2D = self.Size
     local TagPos, Vis5 = cam:WorldToViewportPoint((cf * ESP.BoxShift * CFrame.new(0, size2D.Y / 2, 0)).p)
     
-    -- MODIFIED: Separated Name and Distance logic
     self.Components.Name.Visible = ESP.Names and Vis5
     if ESP.Names and Vis5 then
         self.Components.Name.Position = Vector2.new(TagPos.X, TagPos.Y - 14)
@@ -183,7 +183,7 @@ function boxBase:Update()
     
     self.Components.Distance.Visible = ESP.Distance and Vis5
     if ESP.Distance and Vis5 then
-        local yOffset = ESP.Names and 0 or -14 -- Move distance up if name is hidden
+        local yOffset = ESP.Names and 0 or -14
         self.Components.Distance.Position = Vector2.new(TagPos.X, TagPos.Y + yOffset)
         self.Components.Distance.Text = math.floor((cam.CFrame.p - cf.p).magnitude) .. "m away"
         self.Components.Distance.Color = color
